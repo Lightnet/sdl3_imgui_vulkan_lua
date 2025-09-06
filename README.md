@@ -59,10 +59,15 @@
 - [x] EndTabItem
 - [x] BeginTooltip
 - [x] EndTooltip
+- [x] plotlines
+- [x] histogram
 ### layout:
 - [x] SameLine
 - [x] Separator
 - [x] Spacing
+- [x] table
+- [x] colums
+
 ## events
 - [x] IsItemHovered
 - [x] IsItemActive
