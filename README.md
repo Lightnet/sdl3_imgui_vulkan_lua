@@ -2,6 +2,9 @@
 
 # License: MIT
 
+# Status:
+- work in progress.
+
 # Packages:
 - sdl 3.2.22
 - vulkan 1.4.313.0
@@ -15,6 +18,29 @@
 
 # CMake:
   Use msys64 windows 64 bit.
+
+# Features:
+- [x] Begin
+- [x] End
+- [x] Text
+- [x] Button
+- [x] InputText
+- [x] InputTextMultiline
+- [x] SliderFloat
+- [x] IsItemHovered
+- [x] IsItemActive
+- [x] IsItemClicked
+- [x] GetWindowHeight
+- [x] GetWindowWidth
+- [x] Checkbox
+- [x] RadioButton
+- [x] ColorEdit3
+- [x] SameLine
+- [x] Separator
+- [x] Spacing
+- [x] ProgressBar
+- [x] Combo
+
 
 # Credits:
 - https://github.com/ocornut/imgui
