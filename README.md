@@ -38,6 +38,7 @@
 - [x] End
 - [x] GetWindowHeight
 - [x] GetWindowWidth
+- [x] window child
 ## widgets:
 - [x] Text
 - [x] Button
@@ -56,6 +57,8 @@
 - [x] EndTabBar
 - [x] BeginTabItem
 - [x] EndTabItem
+- [x] BeginTooltip
+- [x] EndTooltip
 ### layout:
 - [x] SameLine
 - [x] Separator
@@ -81,6 +84,7 @@
   Using the lua script to create imgui widgets is easy without need to compile all and save time depend on the project.
 
 ## flags:
+ Note this is work in progress test.
 ```lua
 local bit = require("bit32")
 local flags = bit.bor(ImGui.ImGuiComboFlags_PopupAlignLeft, ImGui.ImGuiComboFlags_HeightSmall)

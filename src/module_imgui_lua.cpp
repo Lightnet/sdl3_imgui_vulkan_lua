@@ -389,6 +389,53 @@ static int lua_imgui_menu_item(lua_State* L) {
     return 1;
 }
 
+// Lua binding for ImGui::BeginTooltip
+static int lua_imgui_begin_tooltip(lua_State* L) {
+    bool result = ImGui::BeginTooltip();
+    lua_pushboolean(L, result);
+    return 1;
+}
+
+// Lua binding for ImGui::EndTooltip
+static int lua_imgui_end_tooltip(lua_State* L) {
+    ImGui::EndTooltip();
+    return 0;
+}
+
+// Lua binding for ImGui::BeginChild (supports string ID)
+static int lua_imgui_begin_child(lua_State* L) {
+    const char* str_id = luaL_checkstring(L, 1);
+    float size_x = luaL_optnumber(L, 2, 0.0f);
+    float size_y = luaL_optnumber(L, 3, 0.0f);
+    bool border = lua_toboolean(L, 4);
+    int flags = 0;
+    if (lua_gettop(L) >= 5) {
+        if (lua_istable(L, 5)) {
+            int len = luaL_len(L, 5);
+            for (int i = 1; i <= len; ++i) {
+                lua_rawgeti(L, 5, i);
+                if (lua_isnumber(L, -1)) {
+                    flags |= lua_tointeger(L, -1);
+                }
+                lua_pop(L, 1);
+            }
+            // printf("ImGui::BeginChild flags (table): %d\n", flags);
+        } else if (lua_isnumber(L, 5)) {
+            flags = luaL_optinteger(L, 5, 0);
+            // printf("ImGui::BeginChild flags (single): %d\n", flags);
+        }
+    }
+    bool result = ImGui::BeginChild(str_id, ImVec2(size_x, size_y), border, flags);
+    lua_pushboolean(L, result);
+    return 1;
+}
+
+// Lua binding for ImGui::EndChild
+static int lua_imgui_end_child(lua_State* L) {
+    ImGui::EndChild();
+    return 0;
+}
+
 // Initialize Lua and load script.lua
 bool InitLua(const char* script_file) {
     L = luaL_newstate();
@@ -470,6 +517,14 @@ bool InitLua(const char* script_file) {
     lua_setfield(L, -2, "EndMenu");
     lua_pushcfunction(L, lua_imgui_menu_item);
     lua_setfield(L, -2, "MenuItem");
+    lua_pushcfunction(L, lua_imgui_begin_tooltip);
+    lua_setfield(L, -2, "BeginTooltip");
+    lua_pushcfunction(L, lua_imgui_end_tooltip);
+    lua_setfield(L, -2, "EndTooltip");
+    lua_pushcfunction(L, lua_imgui_begin_child);
+    lua_setfield(L, -2, "BeginChild");
+    lua_pushcfunction(L, lua_imgui_end_child);
+    lua_setfield(L, -2, "EndChild");
 
     // Register ImGuiInputTextFlags
     lua_pushinteger(L, ImGuiInputTextFlags_EnterReturnsTrue);
@@ -519,6 +574,12 @@ bool InitLua(const char* script_file) {
     lua_pushinteger(L, ImGuiWindowFlags_AlwaysAutoResize);
     lua_setfield(L, -2, "AlwaysAutoResize");
 
+    // Register ImGuiChildFlags
+    lua_pushinteger(L, ImGuiChildFlags_Border);
+    lua_setfield(L, -2, "ChildBorder");
+    lua_pushinteger(L, ImGuiChildFlags_AlwaysAutoResize);
+    lua_setfield(L, -2, "ChildAlwaysAutoResize");
+
     // Set ImGui table as global
     lua_setglobal(L, "ImGui");
 
@@ -545,7 +606,6 @@ bool InitLua(const char* script_file) {
     lua_pop(L, 1);
     return true;
 }
-
 
 // Call Lua draw function each frame
 void RunLuaDraw() {

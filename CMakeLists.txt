@@ -118,7 +118,6 @@ target_include_directories(lua PUBLIC ${lua_SOURCE_DIR})
 # APP
 #================================================
 
-
 # Application NAME
 set(APP_NAME sdl3_imgui)
 

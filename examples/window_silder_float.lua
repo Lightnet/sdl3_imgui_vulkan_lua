@@ -10,9 +10,6 @@ function draw()
             print("Slider value: " .. value)
             slider_float = value
         end
-        if ImGui.Button("Click Me") then
-            print("Button clicked in Lua!")
-        end
     end
     ImGui.End()
 end
