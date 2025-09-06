@@ -436,6 +436,175 @@ static int lua_imgui_end_child(lua_State* L) {
     return 0;
 }
 
+// Lua binding for ImGui::PlotLines
+static int lua_imgui_plot_lines(lua_State* L) {
+    const char* label = luaL_checkstring(L, 1);
+    luaL_checktype(L, 2, LUA_TTABLE);
+    const char* overlay_text = luaL_optstring(L, 3, nullptr);
+    float scale_min = luaL_optnumber(L, 4, FLT_MAX);
+    float scale_max = luaL_optnumber(L, 5, FLT_MAX);
+    float graph_width = luaL_optnumber(L, 6, 0.0f);
+    float graph_height = luaL_optnumber(L, 7, 0.0f);
+
+    // Get values from Lua table
+    int value_count = luaL_len(L, 2);
+    std::vector<float> values(value_count);
+    for (int i = 0; i < value_count; ++i) {
+        lua_rawgeti(L, 2, i + 1);
+        if (lua_isnumber(L, -1)) {
+            values[i] = (float)lua_tonumber(L, -1);
+        } else {
+            values[i] = 0.0f;
+        }
+        lua_pop(L, 1);
+    }
+
+    ImGui::PlotLines(label, values.data(), value_count, 0, overlay_text, scale_min, scale_max, ImVec2(graph_width, graph_height));
+    return 0;
+}
+
+// Lua binding for ImGui::PlotHistogram
+static int lua_imgui_plot_histogram(lua_State* L) {
+    const char* label = luaL_checkstring(L, 1);
+    luaL_checktype(L, 2, LUA_TTABLE);
+    const char* overlay_text = luaL_optstring(L, 3, nullptr);
+    float scale_min = luaL_optnumber(L, 4, FLT_MAX);
+    float scale_max = luaL_optnumber(L, 5, FLT_MAX);
+    float graph_width = luaL_optnumber(L, 6, 0.0f);
+    float graph_height = luaL_optnumber(L, 7, 0.0f);
+
+    // Get values from Lua table
+    int value_count = luaL_len(L, 2);
+    std::vector<float> values(value_count);
+    for (int i = 0; i < value_count; ++i) {
+        lua_rawgeti(L, 2, i + 1);
+        if (lua_isnumber(L, -1)) {
+            values[i] = (float)lua_tonumber(L, -1);
+        } else {
+            values[i] = 0.0f;
+        }
+        lua_pop(L, 1);
+    }
+
+    ImGui::PlotHistogram(label, values.data(), value_count, 0, overlay_text, scale_min, scale_max, ImVec2(graph_width, graph_height));
+    return 0;
+}
+
+// Lua binding for ImGui::PlotBars
+// static int lua_imgui_plot_bars(lua_State* L) {
+//     const char* label = luaL_checkstring(L, 1);
+//     luaL_checktype(L, 2, LUA_TTABLE);
+//     const char* overlay_text = luaL_optstring(L, 3, nullptr);
+//     float scale_min = luaL_optnumber(L, 4, FLT_MAX);
+//     float scale_max = luaL_optnumber(L, 5, FLT_MAX);
+//     float graph_width = luaL_optnumber(L, 6, 0.0f);
+//     float graph_height = luaL_optnumber(L, 7, 0.0f);
+
+//     // Get values from Lua table
+//     int value_count = luaL_len(L, 2);
+//     std::vector<float> values(value_count);
+//     for (int i = 0; i < value_count; ++i) {
+//         lua_rawgeti(L, 2, i + 1);
+//         if (lua_isnumber(L, -1)) {
+//             values[i] = (float)lua_tonumber(L, -1);
+//         } else {
+//             values[i] = 0.0f;
+//         }
+//         lua_pop(L, 1);
+//     }
+
+//     ImGui::PlotBars(label, values.data(), value_count, 0, overlay_text, scale_min, scale_max, ImVec2(graph_width, graph_height));
+//     return 0;
+// }
+
+// Lua binding for ImGui::BeginTable
+static int lua_imgui_begin_table(lua_State* L) {
+    const char* str_id = luaL_checkstring(L, 1);
+    int column = luaL_checkinteger(L, 2);
+    int flags = 0;
+    if (lua_gettop(L) >= 3) {
+        if (lua_istable(L, 3)) {
+            int len = luaL_len(L, 3);
+            for (int i = 1; i <= len; ++i) {
+                lua_rawgeti(L, 3, i);
+                if (lua_isnumber(L, -1)) {
+                    flags |= lua_tointeger(L, -1);
+                }
+                lua_pop(L, 1);
+            }
+            printf("ImGui::BeginTable flags (table): %d\n", flags);
+        } else if (lua_isnumber(L, 3)) {
+            flags = luaL_optinteger(L, 3, 0);
+            printf("ImGui::BeginTable flags (single): %d\n", flags);
+        }
+    }
+    float outer_size_x = luaL_optnumber(L, 4, 0.0f);
+    float outer_size_y = luaL_optnumber(L, 5, 0.0f);
+    bool result = ImGui::BeginTable(str_id, column, flags, ImVec2(outer_size_x, outer_size_y));
+    lua_pushboolean(L, result);
+    return 1;
+}
+
+// Lua binding for ImGui::EndTable
+static int lua_imgui_end_table(lua_State* L) {
+    ImGui::EndTable();
+    return 0;
+}
+
+// Lua binding for ImGui::TableNextRow
+static int lua_imgui_table_next_row(lua_State* L) {
+    float row_min_height = luaL_optnumber(L, 1, 0.0f);
+    ImGui::TableNextRow(0, row_min_height);
+    return 0;
+}
+
+// Lua binding for ImGui::TableNextColumn
+static int lua_imgui_table_next_column(lua_State* L) {
+    bool result = ImGui::TableNextColumn();
+    lua_pushboolean(L, result);
+    return 1;
+}
+
+// Lua binding for ImGui::TableSetColumnIndex
+static int lua_imgui_table_set_column_index(lua_State* L) {
+    int column_n = luaL_checkinteger(L, 1);
+    bool result = ImGui::TableSetColumnIndex(column_n);
+    lua_pushboolean(L, result);
+    return 1;
+}
+
+// Lua binding for ImGui::Columns
+static int lua_imgui_columns(lua_State* L) {
+    int count = luaL_checkinteger(L, 1);
+    const char* str_id = luaL_optstring(L, 2, nullptr);
+    bool border = lua_toboolean(L, 3);
+    ImGui::Columns(count, str_id, border);
+    return 0;
+}
+
+// Lua binding for ImGui::NextColumn
+static int lua_imgui_next_column(lua_State* L) {
+    ImGui::NextColumn();
+    return 0;
+}
+
+// Lua binding for ImGui::SetColumnWidth
+static int lua_imgui_set_column_width(lua_State* L) {
+    int column_index = luaL_checkinteger(L, 1);
+    float width = luaL_checknumber(L, 2);
+    ImGui::SetColumnWidth(column_index, width);
+    return 0;
+}
+
+// Lua binding for ImGui::SetColumnOffset
+static int lua_imgui_set_column_offset(lua_State* L) {
+    int column_index = luaL_checkinteger(L, 1);
+    float offset_x = luaL_checknumber(L, 2);
+    ImGui::SetColumnOffset(column_index, offset_x);
+    return 0;
+}
+
+
 // Initialize Lua and load script.lua
 bool InitLua(const char* script_file) {
     L = luaL_newstate();
@@ -525,6 +694,30 @@ bool InitLua(const char* script_file) {
     lua_setfield(L, -2, "BeginChild");
     lua_pushcfunction(L, lua_imgui_end_child);
     lua_setfield(L, -2, "EndChild");
+    lua_pushcfunction(L, lua_imgui_plot_lines);
+    lua_setfield(L, -2, "PlotLines");
+    lua_pushcfunction(L, lua_imgui_plot_histogram);
+    lua_setfield(L, -2, "PlotHistogram");
+    // lua_pushcfunction(L, lua_imgui_plot_bars);
+    // lua_setfield(L, -2, "PlotBars");
+    lua_pushcfunction(L, lua_imgui_begin_table);
+    lua_setfield(L, -2, "BeginTable");
+    lua_pushcfunction(L, lua_imgui_end_table);
+    lua_setfield(L, -2, "EndTable");
+    lua_pushcfunction(L, lua_imgui_table_next_row);
+    lua_setfield(L, -2, "TableNextRow");
+    lua_pushcfunction(L, lua_imgui_table_next_column);
+    lua_setfield(L, -2, "TableNextColumn");
+    lua_pushcfunction(L, lua_imgui_table_set_column_index);
+    lua_setfield(L, -2, "TableSetColumnIndex");
+    lua_pushcfunction(L, lua_imgui_columns);
+    lua_setfield(L, -2, "Columns");
+    lua_pushcfunction(L, lua_imgui_next_column);
+    lua_setfield(L, -2, "NextColumn");
+    lua_pushcfunction(L, lua_imgui_set_column_width);
+    lua_setfield(L, -2, "SetColumnWidth");
+    lua_pushcfunction(L, lua_imgui_set_column_offset);
+    lua_setfield(L, -2, "SetColumnOffset");
 
     // Register ImGuiInputTextFlags
     lua_pushinteger(L, ImGuiInputTextFlags_EnterReturnsTrue);
@@ -579,6 +772,14 @@ bool InitLua(const char* script_file) {
     lua_setfield(L, -2, "ChildBorder");
     lua_pushinteger(L, ImGuiChildFlags_AlwaysAutoResize);
     lua_setfield(L, -2, "ChildAlwaysAutoResize");
+
+    // Register ImGuiTableFlags
+    lua_pushinteger(L, ImGuiTableFlags_Resizable);
+    lua_setfield(L, -2, "TableResizable");
+    lua_pushinteger(L, ImGuiTableFlags_Borders);
+    lua_setfield(L, -2, "TableBorders");
+    lua_pushinteger(L, ImGuiTableFlags_SizingStretchSame);
+    lua_setfield(L, -2, "TableSizingStretchSame");
 
     // Set ImGui table as global
     lua_setglobal(L, "ImGui");
