@@ -3,10 +3,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "imgui.h"
 #include <vector>
 #include <string>
-
+#include "imgui.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -38,7 +37,7 @@ static int lua_error_handler(lua_State* L) {
     lua_pop(L, 1); // Remove error message from stack
     return 0;
 }
-
+// ImGuiWindowFlags_MenuBar
 // Lua binding for ImGui::Begin
 static int lua_imgui_begin(lua_State* L) {
     const char* name = luaL_checkstring(L, 1);
@@ -46,11 +45,32 @@ static int lua_imgui_begin(lua_State* L) {
     if (lua_isboolean(L, 2)) {
         open = lua_toboolean(L, 2);
     }
-    bool result = ImGui::Begin(name, &open);
+    int flags = 0;
+    if (lua_gettop(L) >= 3) {
+        if (lua_istable(L, 3)) {
+            // Handle flags as a table
+            int len = luaL_len(L, 3);
+            for (int i = 1; i <= len; ++i) {
+                lua_rawgeti(L, 3, i);
+                if (lua_isnumber(L, -1)) {
+                    flags |= lua_tointeger(L, -1);
+                }
+                lua_pop(L, 1);
+            }
+            // printf("ImGui::Begin flags (table): %d\n", flags); // Debug output
+        } else if (lua_isnumber(L, 3)) {
+            // Handle single integer flag
+            flags = luaL_optinteger(L, 3, 0);
+            // printf("ImGui::Begin flags (single): %d\n", flags); // Debug output
+        }
+    }
+    // printf("default ImGui::Begin flags (single): %d\n", flags); // Debug output
+    bool result = ImGui::Begin(name, &open, flags);
     lua_pushboolean(L, result);
     lua_pushboolean(L, open);
-    return 2; // Return result and open state
+    return 2;
 }
+
 
 // Lua binding for ImGui::End
 static int lua_imgui_end(lua_State* L) {
@@ -77,12 +97,13 @@ static int lua_imgui_button(lua_State* L) {
 static int lua_imgui_input_text(lua_State* L) {
     const char* label = luaL_checkstring(L, 1);
     const char* initial_text = luaL_checkstring(L, 2);
+    int flags = luaL_optinteger(L, 3, 0);
     char buffer[256] = {0};
     strncpy(buffer, initial_text, sizeof(buffer) - 1);
-    bool changed = ImGui::InputText(label, buffer, sizeof(buffer));
+    bool changed = ImGui::InputText(label, buffer, sizeof(buffer), flags);
     lua_pushboolean(L, changed);
     lua_pushstring(L, buffer);
-    return 2; // Return changed flag and new text
+    return 2;
 }
 
 // Lua binding for ImGui::InputTextMultiline
@@ -91,12 +112,13 @@ static int lua_imgui_input_text_multiline(lua_State* L) {
     const char* initial_text = luaL_checkstring(L, 2);
     float width = luaL_optnumber(L, 3, 0.0f);
     float height = luaL_optnumber(L, 4, 0.0f);
+    int flags = luaL_optinteger(L, 5, 0);
     char buffer[1024] = {0};
     strncpy(buffer, initial_text, sizeof(buffer) - 1);
-    bool changed = ImGui::InputTextMultiline(label, buffer, sizeof(buffer), ImVec2(width, height));
+    bool changed = ImGui::InputTextMultiline(label, buffer, sizeof(buffer), ImVec2(width, height), flags);
     lua_pushboolean(L, changed);
     lua_pushstring(L, buffer);
-    return 2; // Return changed flag and new text
+    return 2;
 }
 
 // Lua binding for ImGui::SliderFloat
@@ -153,7 +175,7 @@ static int lua_imgui_checkbox(lua_State* L) {
     bool changed = ImGui::Checkbox(label, &checked);
     lua_pushboolean(L, changed);
     lua_pushboolean(L, checked);
-    return 2; // Return changed flag and new state
+    return 2;
 }
 
 // Lua binding for ImGui::RadioButton
@@ -171,13 +193,14 @@ static int lua_imgui_color_edit3(lua_State* L) {
     float r = (float)luaL_checknumber(L, 2);
     float g = (float)luaL_checknumber(L, 3);
     float b = (float)luaL_checknumber(L, 4);
+    int flags = luaL_optinteger(L, 5, 0);
     float color[3] = {r, g, b};
-    bool changed = ImGui::ColorEdit3(label, color);
+    bool changed = ImGui::ColorEdit3(label, color, flags);
     lua_pushboolean(L, changed);
     lua_pushnumber(L, color[0]);
     lua_pushnumber(L, color[1]);
     lua_pushnumber(L, color[2]);
-    return 4; // Return changed flag and RGB values
+    return 4;
 }
 
 // Lua binding for ImGui::SameLine
@@ -214,25 +237,156 @@ static int lua_imgui_progress_bar(lua_State* L) {
 static int lua_imgui_combo(lua_State* L) {
     const char* label = luaL_checkstring(L, 1);
     int current_item = (int)luaL_checkinteger(L, 2);
-    luaL_checktype(L, 3, LUA_TTABLE); // Items must be a table
-    // Get table length
+    luaL_checktype(L, 3, LUA_TTABLE);
+    int flags = luaL_optinteger(L, 4, 0);
     int item_count = luaL_len(L, 3);
-    // Build items array
     std::vector<std::string> items(item_count);
     for (int i = 0; i < item_count; ++i) {
-        lua_rawgeti(L, 3, i + 1); // Lua tables are 1-indexed
+        lua_rawgeti(L, 3, i + 1);
         items[i] = luaL_checkstring(L, -1);
         lua_pop(L, 1);
     }
-    // Convert to C-style array of const char*
     std::vector<const char*> c_items(item_count);
     for (int i = 0; i < item_count; ++i) {
         c_items[i] = items[i].c_str();
     }
-    bool changed = ImGui::Combo(label, &current_item, c_items.data(), item_count);
+    bool changed = ImGui::Combo(label, &current_item, c_items.data(), item_count, flags);
     lua_pushboolean(L, changed);
     lua_pushinteger(L, current_item);
-    return 2; // Return changed flag and selected item index
+    return 2;
+}
+
+// Lua binding for ImGui::ListBox
+static int lua_imgui_list_box(lua_State* L) {
+    const char* label = luaL_checkstring(L, 1);
+    int current_item = (int)luaL_checkinteger(L, 2);
+    luaL_checktype(L, 3, LUA_TTABLE);
+    int item_count = luaL_len(L, 3);
+    std::vector<std::string> items(item_count);
+    for (int i = 0; i < item_count; ++i) {
+        lua_rawgeti(L, 3, i + 1);
+        items[i] = luaL_checkstring(L, -1);
+        lua_pop(L, 1);
+    }
+    std::vector<const char*> c_items(item_count);
+    for (int i = 0; i < item_count; ++i) {
+        c_items[i] = items[i].c_str();
+    }
+    bool changed = ImGui::ListBox(label, &current_item, c_items.data(), item_count, -1);
+    lua_pushboolean(L, changed);
+    lua_pushinteger(L, current_item);
+    return 2;
+}
+
+// Lua binding for ImGui::TreeNode
+static int lua_imgui_tree_node(lua_State* L) {
+    const char* label = luaL_checkstring(L, 1);
+    int flags = luaL_optinteger(L, 2, 0);
+    bool open = ImGui::TreeNodeEx(label, flags);
+    lua_pushboolean(L, open);
+    return 1;
+}
+
+// Lua binding for ImGui::TreePop
+static int lua_imgui_tree_pop(lua_State* L) {
+    ImGui::TreePop();
+    return 0;
+}
+
+// Lua binding for ImGui::BeginTabBar
+static int lua_imgui_begin_tab_bar(lua_State* L) {
+    const char* str_id = luaL_checkstring(L, 1);
+    int flags = luaL_optinteger(L, 2, 0);
+    bool open = ImGui::BeginTabBar(str_id, flags);
+    lua_pushboolean(L, open);
+    return 1;
+}
+
+// Lua binding for ImGui::EndTabBar
+static int lua_imgui_end_tab_bar(lua_State* L) {
+    ImGui::EndTabBar();
+    return 0;
+}
+
+// Lua binding for ImGui::BeginTabItem
+static int lua_imgui_begin_tab_item(lua_State* L) {
+    const char* label = luaL_checkstring(L, 1);
+    bool open = true;
+    if (lua_isboolean(L, 2)) {
+        open = lua_toboolean(L, 2);
+    }
+    int flags = luaL_optinteger(L, 3, 0);
+    bool selected = ImGui::BeginTabItem(label, &open, flags);
+    lua_pushboolean(L, selected);
+    lua_pushboolean(L, open);
+    return 2;
+}
+
+// Lua binding for ImGui::EndTabItem
+static int lua_imgui_end_tab_item(lua_State* L) {
+    ImGui::EndTabItem();
+    return 0;
+}
+
+// Lua binding for ImGui::BeginMenuBar
+static int lua_imgui_begin_menu_bar(lua_State* L) {
+    bool open = ImGui::BeginMenuBar();
+    lua_pushboolean(L, open);
+    return 1;
+}
+
+// Lua binding for ImGui::EndMenuBar
+static int lua_imgui_end_menu_bar(lua_State* L) {
+    ImGui::EndMenuBar();
+    return 0;
+}
+
+// Lua binding for ImGui::BeginMainMenuBar
+static int lua_imgui_begin_main_menu_bar(lua_State* L) {
+    bool open = ImGui::BeginMainMenuBar();
+    lua_pushboolean(L, open);
+    return 1;
+}
+
+// Lua binding for ImGui::EndMainMenuBar
+static int lua_imgui_end_main_menu_bar(lua_State* L) {
+    ImGui::EndMainMenuBar();
+    return 0;
+}
+
+// Lua binding for ImGui::BeginMenu
+static int lua_imgui_begin_menu(lua_State* L) {
+    const char* label = luaL_checkstring(L, 1);
+    bool enabled = true;
+    if (lua_gettop(L) >= 2 && !lua_isnil(L, 2)) {
+        enabled = lua_toboolean(L, 2);
+    }
+    bool open = ImGui::BeginMenu(label, enabled);
+    lua_pushboolean(L, open);
+    return 1;
+}
+
+// Lua binding for ImGui::EndMenu
+static int lua_imgui_end_menu(lua_State* L) {
+    ImGui::EndMenu();
+    return 0;
+}
+
+// Lua binding for ImGui::MenuItem
+static int lua_imgui_menu_item(lua_State* L) {
+    const char* label = luaL_checkstring(L, 1);
+    const char* shortcut = luaL_optstring(L, 2, nullptr);
+    bool selected = false;
+    if (lua_gettop(L) >= 3 && !lua_isnil(L, 3)) {
+        selected = lua_toboolean(L, 3);
+    }
+    bool enabled = true;
+    if (lua_gettop(L) >= 4 && !lua_isnil(L, 4)) {
+        enabled = lua_toboolean(L, 4);
+    }
+    bool activated = ImGui::MenuItem(label, shortcut, selected, enabled);
+    lua_pushboolean(L, activated);
+    return 1;
 }
 
 // Initialize Lua and load script.lua
@@ -244,8 +398,10 @@ bool InitLua(const char* script_file) {
     }
     luaL_openlibs(L); // Open standard Lua libraries
 
-    // Register ImGui functions
+    // Create ImGui table
     lua_newtable(L);
+
+    // Register ImGui functions
     lua_pushcfunction(L, lua_imgui_begin);
     lua_setfield(L, -2, "Begin");
     lua_pushcfunction(L, lua_imgui_end);
@@ -286,6 +442,84 @@ bool InitLua(const char* script_file) {
     lua_setfield(L, -2, "ProgressBar");
     lua_pushcfunction(L, lua_imgui_combo);
     lua_setfield(L, -2, "Combo");
+    lua_pushcfunction(L, lua_imgui_list_box);
+    lua_setfield(L, -2, "ListBox");
+    lua_pushcfunction(L, lua_imgui_tree_node);
+    lua_setfield(L, -2, "TreeNode");
+    lua_pushcfunction(L, lua_imgui_tree_pop);
+    lua_setfield(L, -2, "TreePop");
+    lua_pushcfunction(L, lua_imgui_begin_tab_bar);
+    lua_setfield(L, -2, "BeginTabBar");
+    lua_pushcfunction(L, lua_imgui_end_tab_bar);
+    lua_setfield(L, -2, "EndTabBar");
+    lua_pushcfunction(L, lua_imgui_begin_tab_item);
+    lua_setfield(L, -2, "BeginTabItem");
+    lua_pushcfunction(L, lua_imgui_end_tab_item);
+    lua_setfield(L, -2, "EndTabItem");
+    lua_pushcfunction(L, lua_imgui_begin_menu_bar);
+    lua_setfield(L, -2, "BeginMenuBar");
+    lua_pushcfunction(L, lua_imgui_end_menu_bar);
+    lua_setfield(L, -2, "EndMenuBar");
+    lua_pushcfunction(L, lua_imgui_begin_main_menu_bar);
+    lua_setfield(L, -2, "BeginMainMenuBar");
+    lua_pushcfunction(L, lua_imgui_end_main_menu_bar);
+    lua_setfield(L, -2, "EndMainMenuBar");
+    lua_pushcfunction(L, lua_imgui_begin_menu);
+    lua_setfield(L, -2, "BeginMenu");
+    lua_pushcfunction(L, lua_imgui_end_menu);
+    lua_setfield(L, -2, "EndMenu");
+    lua_pushcfunction(L, lua_imgui_menu_item);
+    lua_setfield(L, -2, "MenuItem");
+
+    // Register ImGuiInputTextFlags
+    lua_pushinteger(L, ImGuiInputTextFlags_EnterReturnsTrue);
+    lua_setfield(L, -2, "EnterReturnsTrue");
+    lua_pushinteger(L, ImGuiInputTextFlags_ReadOnly);
+    lua_setfield(L, -2, "ReadOnly");
+
+    // Register ImGuiColorEditFlags
+    lua_pushinteger(L, ImGuiColorEditFlags_NoAlpha);
+    lua_setfield(L, -2, "NoAlpha");
+    lua_pushinteger(L, ImGuiColorEditFlags_HDR);
+    lua_setfield(L, -2, "HDR");
+
+    // Register ImGuiComboFlags
+    lua_pushinteger(L, ImGuiComboFlags_PopupAlignLeft);
+    lua_setfield(L, -2, "PopupAlignLeft");
+    lua_pushinteger(L, ImGuiComboFlags_HeightSmall);
+    lua_setfield(L, -2, "HeightSmall");
+
+    // Register ImGuiTreeNodeFlags
+    lua_pushinteger(L, ImGuiTreeNodeFlags_DefaultOpen);
+    lua_setfield(L, -2, "DefaultOpen");
+    lua_pushinteger(L, ImGuiTreeNodeFlags_Selected);
+    lua_setfield(L, -2, "Selected");
+
+    // Register ImGuiTabBarFlags
+    lua_pushinteger(L, ImGuiTabBarFlags_Reorderable);
+    lua_setfield(L, -2, "Reorderable");
+
+    // Register ImGuiTabItemFlags
+    lua_pushinteger(L, ImGuiTabItemFlags_SetSelected);
+    lua_setfield(L, -2, "SetSelected");
+
+    // Register ImGuiWindowFlags
+    lua_pushinteger(L, ImGuiWindowFlags_NoTitleBar);
+    lua_setfield(L, -2, "NoTitleBar");
+    lua_pushinteger(L, ImGuiWindowFlags_NoResize);
+    lua_setfield(L, -2, "NoResize");
+    lua_pushinteger(L, ImGuiWindowFlags_NoMove);
+    lua_setfield(L, -2, "NoMove");
+    lua_pushinteger(L, ImGuiWindowFlags_MenuBar);
+    lua_setfield(L, -2, "MenuBar");
+    lua_pushinteger(L, ImGuiWindowFlags_NoCollapse);
+    lua_setfield(L, -2, "NoCollapse");
+    lua_pushinteger(L, ImGuiWindowFlags_NoScrollbar);
+    lua_setfield(L, -2, "NoScrollbar");
+    lua_pushinteger(L, ImGuiWindowFlags_AlwaysAutoResize);
+    lua_setfield(L, -2, "AlwaysAutoResize");
+
+    // Set ImGui table as global
     lua_setglobal(L, "ImGui");
 
     // Check for script file (default to script.lua if nullptr)
@@ -311,6 +545,7 @@ bool InitLua(const char* script_file) {
     lua_pop(L, 1);
     return true;
 }
+
 
 // Call Lua draw function each frame
 void RunLuaDraw() {

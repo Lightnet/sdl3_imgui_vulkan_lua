@@ -530,6 +530,32 @@ int main(int argc, char** argv)
             ImGui::End();
         }
 
+        // {
+        //     ImGui::Begin("Example Window", nullptr, ImGuiWindowFlags_MenuBar);
+        //     if (ImGui::BeginMenuBar())
+        //     {
+        //         if (ImGui::BeginMenu("File"))
+        //         {
+        //             ImGui::MenuItem("New");
+        //             ImGui::MenuItem("Open");
+        //             ImGui::Separator(); // Adds a horizontal separator
+        //             ImGui::MenuItem("Save");
+        //             ImGui::EndMenu();
+        //         }
+        //         if (ImGui::BeginMenu("Edit"))
+        //         {
+        //             ImGui::MenuItem("Cut");
+        //             ImGui::MenuItem("Copy");
+        //             ImGui::MenuItem("Paste");
+        //             ImGui::EndMenu();
+        //         }
+        //         ImGui::EndMenuBar();
+        //     }
+        //     // Other window content
+        //     ImGui::Text("This is the window content.");
+        //     ImGui::End();
+        // }
+
         // 3. Show another simple window.
         if (show_another_window)
         {
