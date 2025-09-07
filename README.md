@@ -79,9 +79,10 @@
 - [x] EndMenu
 - [x] MenuItem
 - [x] BeginMainMenuBar
-##
-- [ ] 
-- [ ] 
+
+# vulkan:
+- [x] image load texture.
+  Simple image test.
 
 # imgui lua:
   The design will be simple to match function but need to translate to c++ to lua which work differently. Still work the same some degree but to lua to c++ will take some time to translate correctly.

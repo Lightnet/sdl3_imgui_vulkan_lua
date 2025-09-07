@@ -115,6 +115,19 @@ add_library(lua STATIC ${LUA_SRC})
 target_include_directories(lua PUBLIC ${lua_SOURCE_DIR})
 
 #================================================
+# IMAGE
+#================================================
+FetchContent_Declare(
+    stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG        master
+    EXCLUDE_FROM_ALL #this disable build?
+    GIT_SHALLOW TRUE
+    USES_TERMINAL_DOWNLOAD TRUE
+)
+FetchContent_MakeAvailable(stb)
+
+#================================================
 # APP
 #================================================
 
@@ -137,6 +150,7 @@ set(SRC_FILES
 # Create executable
 add_executable(${APP_NAME}
     src/main.cpp
+    # src/imgui_image.cpp
     ${SRC_FILES}
 )
 
@@ -157,6 +171,7 @@ target_include_directories(${APP_NAME} PUBLIC
     ${imgui_SOURCE_DIR}/backends            # imgui/backends
     ${SDL3_SOURCE_DIR}/include              # SDL 3.2.22
     ${lua_SOURCE_DIR}                       # lua
+    ${stb_SOURCE_DIR}                       # stb
 )
 
 # for c #define
