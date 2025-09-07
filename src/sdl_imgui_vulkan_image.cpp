@@ -629,6 +629,16 @@ int main(int argc, char** argv)
     // Load texture
     TextureData myTexture = CreateTexture(g_Device, g_PhysicalDevice, g_CommandPool, g_Queue, "character.png");
 
+    // Expose the texture descriptor to Lua as userdata (light userdata for pointer)
+    if (L) {  // L is from module_imgui_lua.hpp (make it accessible or pass it)
+        lua_getglobal(L, "ImGui");
+        if (lua_istable(L, -1)) {
+            lua_pushlightuserdata(L, (void*)myTexture.descriptorSet);  // Light userdata for ImTextureID
+            lua_setfield(L, -2, "my_texture");
+        }
+        lua_pop(L, 1);  // Pop the ImGui table
+    }
+
 
     // Our state
     bool show_demo_window = true;
@@ -685,7 +695,7 @@ int main(int argc, char** argv)
         if (show_demo_window)
             ImGui::ShowDemoWindow(&show_demo_window);
 
-            
+
         // Example ImGui window to display the image
         ImGui::Begin("Image Window");
         if (myTexture.descriptorSet) {

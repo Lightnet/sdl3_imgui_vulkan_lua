@@ -61,6 +61,8 @@
 - [x] EndTooltip
 - [x] plotlines
 - [x] histogram
+- [x] image (does not have load file yet)
+
 ### layout:
 - [x] SameLine
 - [x] Separator

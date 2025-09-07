@@ -12,6 +12,8 @@ extern "C" {
 }
 #endif
 
+extern lua_State* L;  // Declare for external access
+
 bool InitLua(const char* script_file = nullptr);
 void RunLuaDraw();
 void CleanupLua();

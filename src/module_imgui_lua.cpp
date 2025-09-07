@@ -18,7 +18,8 @@ extern "C" {
 #endif
 
 // Lua state
-static lua_State* L = nullptr;
+// static lua_State* L = nullptr;
+lua_State* L = nullptr;  // Now it's a global definition with external linkage
 
 // Function to check if a file exists
 static bool FileExists(const char* filename) {
@@ -578,28 +579,43 @@ static int lua_imgui_set_column_offset(lua_State* L) {
 }
 
 // Lua binding for ImGui::Image
-// static int lua_imgui_image(lua_State* L) {
-//     // Expect texture_id as integer or light userdata
-//     ImTextureID texture_id = (ImTextureID)(intptr_t)luaL_checkinteger(L, 1);
-//     float size_x = luaL_checknumber(L, 2);
-//     float size_y = luaL_checknumber(L, 3);
-//     float uv0_x = luaL_optnumber(L, 4, 0.0f);
-//     float uv0_y = luaL_optnumber(L, 5, 0.0f);
-//     float uv1_x = luaL_optnumber(L, 6, 1.0f);
-//     float uv1_y = luaL_optnumber(L, 7, 1.0f);
-//     float tint_r = luaL_optnumber(L, 8, 1.0f);
-//     float tint_g = luaL_optnumber(L, 9, 1.0f);
-//     float tint_b = luaL_optnumber(L, 10, 1.0f);
-//     float tint_a = luaL_optnumber(L, 11, 1.0f);
-//     float border_r = luaL_optnumber(L, 12, 0.0f);
-//     float border_g = luaL_optnumber(L, 13, 0.0f);
-//     float border_b = luaL_optnumber(L, 14, 0.0f);
-//     float border_a = luaL_optnumber(L, 15, 0.0f);
+static int lua_imgui_image(lua_State* L) {
+    // Get texture_id as light userdata (pointer to VkDescriptorSet)
+    ImTextureID texture_id = (ImTextureID)lua_touserdata(L, 1);  // Cast to ImTextureID
+    if (!texture_id) {
+        luaL_error(L, "Invalid texture_id (must be userdata/pointer)");
+        return 0;
+    }
 
-//     ImGui::Image(texture_id, ImVec2(size_x, size_y), ImVec2(uv0_x, uv0_y), ImVec2(uv1_x, uv1_y),
-//                  ImVec4(tint_r, tint_g, tint_b, tint_a), ImVec4(border_r, border_g, border_b, border_a));
-//     return 0;
-// }
+    float size_x = (float)luaL_checknumber(L, 2);
+    float size_y = (float)luaL_checknumber(L, 3);
+
+    // Optional UV0 (defaults: 0,0)
+    float uv0_x = luaL_optnumber(L, 4, 0.0f);
+    float uv0_y = luaL_optnumber(L, 5, 0.0f);
+
+    // Optional UV1 (defaults: 1,1)
+    float uv1_x = luaL_optnumber(L, 6, 1.0f);
+    float uv1_y = luaL_optnumber(L, 7, 1.0f);
+
+    // Optional tint_col (ImVec4, defaults: 1,1,1,1 white)
+    float tint_r = luaL_optnumber(L, 8, 1.0f);
+    float tint_g = luaL_optnumber(L, 9, 1.0f);
+    float tint_b = luaL_optnumber(L, 10, 1.0f);
+    float tint_a = luaL_optnumber(L, 11, 1.0f);
+
+    // Optional border_col (ImVec4, defaults: 0,0,0,0 transparent)
+    float border_r = luaL_optnumber(L, 12, 0.0f);
+    float border_g = luaL_optnumber(L, 13, 0.0f);
+    float border_b = luaL_optnumber(L, 14, 0.0f);
+    float border_a = luaL_optnumber(L, 15, 0.0f);
+
+    ImGui::Image(texture_id, ImVec2(size_x, size_y),
+                 ImVec2(uv0_x, uv0_y), ImVec2(uv1_x, uv1_y),
+                 ImVec4(tint_r, tint_g, tint_b, tint_a),
+                 ImVec4(border_r, border_g, border_b, border_a));
+    return 0;
+}
 
 // // Lua binding for ImGui::ImageButton
 // static int lua_imgui_image_button(lua_State* L) {
@@ -721,8 +737,6 @@ bool InitLua(const char* script_file) {
     lua_setfield(L, -2, "PlotLines");
     lua_pushcfunction(L, lua_imgui_plot_histogram);
     lua_setfield(L, -2, "PlotHistogram");
-    // lua_pushcfunction(L, lua_imgui_plot_bars);
-    // lua_setfield(L, -2, "PlotBars");
     lua_pushcfunction(L, lua_imgui_begin_table);
     lua_setfield(L, -2, "BeginTable");
     lua_pushcfunction(L, lua_imgui_end_table);
@@ -741,6 +755,8 @@ bool InitLua(const char* script_file) {
     lua_setfield(L, -2, "SetColumnWidth");
     lua_pushcfunction(L, lua_imgui_set_column_offset);
     lua_setfield(L, -2, "SetColumnOffset");
+    lua_pushcfunction(L, lua_imgui_image);
+    lua_setfield(L, -2, "Image");
 
     // Register ImGuiInputTextFlags
     lua_pushinteger(L, ImGuiInputTextFlags_EnterReturnsTrue);
