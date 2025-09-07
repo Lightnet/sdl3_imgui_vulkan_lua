@@ -617,31 +617,118 @@ static int lua_imgui_image(lua_State* L) {
     return 0;
 }
 
-// // Lua binding for ImGui::ImageButton
-// static int lua_imgui_image_button(lua_State* L) {
-//     // Expect texture_id as integer or light userdata
-//     ImTextureID texture_id = (ImTextureID)(intptr_t)luaL_checkinteger(L, 1);
-//     float size_x = luaL_checknumber(L, 2);
-//     float size_y = luaL_checknumber(L, 3);
-//     float uv0_x = luaL_optnumber(L, 4, 0.0f);
-//     float uv0_y = luaL_optnumber(L, 5, 0.0f);
-//     float uv1_x = luaL_optnumber(L, 6, 1.0f);
-//     float uv1_y = luaL_optnumber(L, 7, 1.0f);
-//     int frame_padding = luaL_optinteger(L, 8, -1);
-//     float bg_r = luaL_optnumber(L, 9, 0.0f);
-//     float bg_g = luaL_optnumber(L, 10, 0.0f);
-//     float bg_b = luaL_optnumber(L, 11, 0.0f);
-//     float bg_a = luaL_optnumber(L, 12, 0.0f);
-//     float tint_r = luaL_optnumber(L, 13, 1.0f);
-//     float tint_g = luaL_optnumber(L, 14, 1.0f);
-//     float tint_b = luaL_optnumber(L, 15, 1.0f);
-//     float tint_a = luaL_optnumber(L, 16, 1.0f);
+// Lua binding for ImGui::SetTooltip (converts args to strings and concatenates)
+static int lua_imgui_set_tooltip(lua_State* L) {
+    // First argument: base format/message (string)
+    const char* base = luaL_checkstring(L, 1);
+    
+    // Get number of additional args
+    int n = lua_gettop(L) - 1;
+    
+    // Build tooltip string by concatenating base + converted args
+    std::string tooltip = std::string(base);  // Start with base
+    for (int i = 2; i <= n + 1; ++i) {  // Args start at index 2
+        // Convert arg to string (handles number, bool, nil, etc.)
+        const char* arg_str = luaL_tolstring(L, i, nullptr);  // Pushes converted string to stack temporarily
+        if (arg_str) {
+            tooltip += " ";  // Simple separator (customize if needed)
+            tooltip += arg_str;
+            lua_pop(L, 1);  // Pop the temporary string from stack
+        }
+    }
+    
+    // Call ImGui::SetTooltip with the concatenated string
+    ImGui::SetTooltip("%s", tooltip.c_str());
+    
+    return 0;
+}
 
-//     bool clicked = ImGui::ImageButton(texture_id, ImVec2(size_x, size_y), ImVec2(uv0_x, uv0_y), ImVec2(uv1_x, uv1_y),
-//                                       frame_padding, ImVec4(bg_r, bg_g, bg_b, bg_a), ImVec4(tint_r, tint_g, tint_b, tint_a));
-//     lua_pushboolean(L, clicked);
-//     return 1;
-// }
+// Lua binding for ImGui::VSliderFloat (modern API with flags support)
+static int lua_imgui_vslider_float(lua_State* L) {
+    const char* label = luaL_checkstring(L, 1);
+    float size_x = (float)luaL_checknumber(L, 2);
+    float size_y = (float)luaL_checknumber(L, 3);
+    float value = (float)luaL_checknumber(L, 4);
+    float min = (float)luaL_checknumber(L, 5);
+    float max = (float)luaL_checknumber(L, 6);
+    const char* format = luaL_optstring(L, 7, "%.3f");
+    
+    // Handle flags as optional table (like Begin binding)
+    ImGuiSliderFlags flags = 0;
+    if (lua_gettop(L) >= 8) {
+        if (lua_istable(L, 8)) {
+            // Parse table of flags (e.g., {ImGuiSliderFlags_Logarithmic})
+            int len = luaL_len(L, 8);
+            for (int i = 1; i <= len; ++i) {
+                lua_rawgeti(L, 8, i);
+                if (lua_isnumber(L, -1)) {
+                    flags |= (ImGuiSliderFlags)lua_tointeger(L, -1);
+                }
+                lua_pop(L, 1);
+            }
+        } else if (lua_isnumber(L, 8)) {
+            // Single integer flag
+            flags = (ImGuiSliderFlags)luaL_optinteger(L, 8, 0);
+        }
+    }
+    
+    bool changed = ImGui::VSliderFloat(label, ImVec2(size_x, size_y), &value, min, max, format, flags);
+    lua_pushboolean(L, changed);
+    lua_pushnumber(L, value);
+    return 2;
+}
+
+// Lua binding for ImGui::BulletText (simple string; use string.format in Lua for advanced fmt)
+static int lua_imgui_bullet_text(lua_State* L) {
+    const char* text = luaL_checkstring(L, 1);
+    ImGui::BulletText("%s", text);
+    return 0;
+}
+
+
+// Lua binding for ImGui::ImageButton (corrected with str_id first)
+static int lua_imgui_image_button(lua_State* L) {
+    // First: str_id (required string for ImGui ID)
+    const char* str_id = luaL_checkstring(L, 1);
+
+    // Second: texture_id as light userdata (pointer to VkDescriptorSet / ImTextureID)
+    ImTextureID texture_id = (ImTextureID)lua_touserdata(L, 2);
+    if (!texture_id) {
+        luaL_error(L, "Invalid texture_id (must be userdata/pointer at arg 2)");
+        return 0;
+    }
+
+    // Third/Fourth: size_x, size_y (image_size)
+    float size_x = (float)luaL_checknumber(L, 3);
+    float size_y = (float)luaL_checknumber(L, 4);
+
+    // Optional UV0 (defaults: 0,0)
+    float uv0_x = luaL_optnumber(L, 5, 0.0f);
+    float uv0_y = luaL_optnumber(L, 6, 0.0f);
+
+    // Optional UV1 (defaults: 1,1)
+    float uv1_x = luaL_optnumber(L, 7, 1.0f);
+    float uv1_y = luaL_optnumber(L, 8, 1.0f);
+
+    // Optional bg_col (ImVec4, defaults: transparent 0,0,0,0)
+    float bg_r = luaL_optnumber(L, 9, 0.0f);
+    float bg_g = luaL_optnumber(L, 10, 0.0f);
+    float bg_b = luaL_optnumber(L, 11, 0.0f);
+    float bg_a = luaL_optnumber(L, 12, 0.0f);
+
+    // Optional tint_col (ImVec4, defaults: white 1,1,1,1)
+    float tint_r = luaL_optnumber(L, 13, 1.0f);
+    float tint_g = luaL_optnumber(L, 14, 1.0f);
+    float tint_b = luaL_optnumber(L, 15, 1.0f);
+    float tint_a = luaL_optnumber(L, 16, 1.0f);
+
+    bool clicked = ImGui::ImageButton(str_id, texture_id, ImVec2(size_x, size_y),
+                                      ImVec2(uv0_x, uv0_y), ImVec2(uv1_x, uv1_y),
+                                      ImVec4(bg_r, bg_g, bg_b, bg_a),
+                                      ImVec4(tint_r, tint_g, tint_b, tint_a));
+    lua_pushboolean(L, clicked);
+    return 1;
+}
 
 
 // Initialize Lua and load script.lua
@@ -757,6 +844,15 @@ bool InitLua(const char* script_file) {
     lua_setfield(L, -2, "SetColumnOffset");
     lua_pushcfunction(L, lua_imgui_image);
     lua_setfield(L, -2, "Image");
+    lua_pushcfunction(L, lua_imgui_set_tooltip);
+    lua_setfield(L, -2, "SetTooltip");
+    lua_pushcfunction(L, lua_imgui_vslider_float);
+    lua_setfield(L, -2, "VSliderFloat");
+    lua_pushcfunction(L, lua_imgui_bullet_text);
+    lua_setfield(L, -2, "BulletText");
+
+    lua_pushcfunction(L, lua_imgui_image_button);
+    lua_setfield(L, -2, "ImageButton");
 
     // Register ImGuiInputTextFlags
     lua_pushinteger(L, ImGuiInputTextFlags_EnterReturnsTrue);
@@ -819,6 +915,19 @@ bool InitLua(const char* script_file) {
     lua_setfield(L, -2, "TableBorders");
     lua_pushinteger(L, ImGuiTableFlags_SizingStretchSame);
     lua_setfield(L, -2, "TableSizingStretchSame");
+
+    // Register ImGuiSliderFlags
+    // lua_pushinteger(L, ImGuiSliderFlags_AlwaysExpose); //does not exist
+    // lua_setfield(L, -2, "SliderFlags_AlwaysExpose");
+    lua_pushinteger(L, ImGuiSliderFlags_NoRoundToFormat);
+    lua_setfield(L, -2, "SliderFlags_NoRoundToFormat");
+    lua_pushinteger(L, ImGuiSliderFlags_NoInput);
+    lua_setfield(L, -2, "SliderFlags_NoInput");
+    lua_pushinteger(L, ImGuiSliderFlags_InvalidMask_);  // For reference (internal mask)
+    lua_setfield(L, -2, "SliderFlags_InvalidMask");
+    lua_pushinteger(L, ImGuiSliderFlags_Logarithmic);
+    lua_setfield(L, -2, "SliderFlags_Logarithmic");  // Key for logarithmic (replaces old 'power')
+
 
     // Set ImGui table as global
     lua_setglobal(L, "ImGui");

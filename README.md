@@ -59,9 +59,13 @@
 - [x] EndTabItem
 - [x] BeginTooltip
 - [x] EndTooltip
+- [x] SetTooltip
 - [x] plotlines
 - [x] histogram
 - [x] image (does not have load file yet)
+- [x] image button (does not have load file yet)
+- [x] vertical slider
+- [x] bullet point
 
 ### layout:
 - [x] SameLine
@@ -85,6 +89,11 @@
 # vulkan:
 - [x] image load texture.
   Simple image test.
+
+## Notes:
+- current basic widgets
+- configs flags not work on.
+
 
 # imgui lua:
   The design will be simple to match function but need to translate to c++ to lua which work differently. Still work the same some degree but to lua to c++ will take some time to translate correctly.
