@@ -12,6 +12,25 @@ extern "C" {
 }
 #endif
 
+// Add these includes for STL types in externs
+#include <map>
+#include <string>
+
+// Vulkan and Texture includes
+#include <vulkan/vulkan.h>  // For VkDevice, VkCommandPool, etc.
+#include "textures.h"  // For TextureData (full definition)
+
+extern VkDevice g_Device;
+extern VkPhysicalDevice g_PhysicalDevice;
+extern VkCommandPool g_CommandPool;
+extern VkQueue g_Queue;
+extern VkAllocationCallbacks* g_Allocator;
+extern std::map<std::string, TextureData> g_TextureMap;  // For bindings
+
+// Expose functions for Lua bindings
+extern TextureData CreateTexture(VkDevice device, VkPhysicalDevice physicalDevice, VkCommandPool commandPool, VkQueue queue, const char* imagePath);
+extern void DestroyTexture(VkDevice device, TextureData& texture);
+
 extern lua_State* L;  // Declare for external access
 
 bool InitLua(const char* script_file = nullptr);

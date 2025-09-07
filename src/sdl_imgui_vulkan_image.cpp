@@ -23,6 +23,10 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 #include "module_imgui_lua.hpp" // Add module header
+// #include "textures.h"
+
+#include <map>  // For std::map
+#include <string>  // For std::string (if not already)
 
 // This example doesn't compile with Emscripten yet! Awaiting SDL3 support.
 #ifdef __EMSCRIPTEN__
@@ -42,27 +46,84 @@ static VkDebugReportCallbackEXT g_DebugReport = VK_NULL_HANDLE;
 #endif
 
 // Data
-static VkAllocationCallbacks*   g_Allocator = nullptr;
-static VkInstance               g_Instance = VK_NULL_HANDLE;
-static VkPhysicalDevice         g_PhysicalDevice = VK_NULL_HANDLE;
-static VkDevice                 g_Device = VK_NULL_HANDLE;
-static uint32_t                 g_QueueFamily = (uint32_t)-1;
-static VkQueue                  g_Queue = VK_NULL_HANDLE;
+VkAllocationCallbacks*   g_Allocator = nullptr;  // Was static
+VkInstance               g_Instance = VK_NULL_HANDLE;
+VkPhysicalDevice         g_PhysicalDevice = VK_NULL_HANDLE;  // Was static
+VkDevice                 g_Device = VK_NULL_HANDLE;  // Was static
+uint32_t                 g_QueueFamily = (uint32_t)-1;
+VkQueue                  g_Queue = VK_NULL_HANDLE;
 static VkPipelineCache          g_PipelineCache = VK_NULL_HANDLE;
 static VkDescriptorPool         g_DescriptorPool = VK_NULL_HANDLE;
-static VkCommandPool            g_CommandPool = VK_NULL_HANDLE; // Add this
+VkCommandPool            g_CommandPool = VK_NULL_HANDLE; // Add this
 static ImGui_ImplVulkanH_Window g_MainWindowData;
 static uint32_t                 g_MinImageCount = 2;
 static bool                     g_SwapChainRebuild = false;
 
-// Add these globals or struct to manage the texture
-struct TextureData {
-    VkImage image = VK_NULL_HANDLE;
-    VkDeviceMemory memory = VK_NULL_HANDLE;
-    VkImageView imageView = VK_NULL_HANDLE;
-    VkSampler sampler = VK_NULL_HANDLE;
-    VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
-};
+// // Add these globals or struct to manage the texture
+// struct TextureData {
+//     VkImage image = VK_NULL_HANDLE;
+//     VkDeviceMemory memory = VK_NULL_HANDLE;
+//     VkImageView imageView = VK_NULL_HANDLE;
+//     VkSampler sampler = VK_NULL_HANDLE;
+//     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+// };
+
+// Global map for textures (non-static, matches extern)
+std::map<std::string, TextureData> g_TextureMap;
+
+static void check_vk_result(VkResult err)
+{
+    if (err == VK_SUCCESS)
+        return;
+    fprintf(stderr, "[vulkan] Error: VkResult = %d (handled if out-of-date)\n", err);
+    if (err == VK_ERROR_OUT_OF_DATE_KHR || err == VK_SUBOPTIMAL_KHR) {
+        // Non-fatal swapchain issues: Trigger rebuild next frame
+        g_SwapChainRebuild = true;
+        return;  // Continue—no abort
+    }
+    if (err < 0)  // Fatal (e.g., -1 OUT_OF_HOST_MEMORY, -3 DEVICE_LOST)
+        abort();
+}
+
+
+// Function to unload a single texture
+void DestroyTexture(VkDevice device, TextureData& texture) {
+    // Wait for device idle to ensure no pending GPU ops (prevents out-of-date errors)
+    // vkDeviceWaitIdle(device);
+    printf("destory image...\n");
+    
+    VkResult err = vkDeviceWaitIdle(device);
+    check_vk_result(err);  // Now tolerates -4 if any
+
+    
+    if (texture.descriptorSet) {
+        ImGui_ImplVulkan_RemoveTexture(texture.descriptorSet);
+        texture.descriptorSet = VK_NULL_HANDLE;
+    }
+    if (texture.sampler) {
+        vkDestroySampler(device, texture.sampler, g_Allocator);
+        texture.sampler = VK_NULL_HANDLE;
+    }
+    if (texture.imageView) {
+        vkDestroyImageView(device, texture.imageView, g_Allocator);
+        texture.imageView = VK_NULL_HANDLE;
+    }
+    if (texture.image) {
+        vkDestroyImage(device, texture.image, g_Allocator);
+        texture.image = VK_NULL_HANDLE;
+    }
+    //this error crash while unloading from lua script?
+    // vkDeviceWaitIdle(device);
+    if (texture.memory) {
+        vkFreeMemory(device, texture.memory, g_Allocator);
+        texture.memory = VK_NULL_HANDLE;
+    }
+    // g_SwapChainRebuild = true;
+    // err = vkDeviceWaitIdle(device);
+    // check_vk_result(err);  // Now tolerates -4 if any
+
+    printf("Unloaded texture\n");
+}
 
 
 // Helper function to find memory type
@@ -221,15 +282,31 @@ TextureData CreateTexture(VkDevice device, VkPhysicalDevice physicalDevice, VkCo
 }
 
 
+// static void check_vk_result(VkResult err)
+// {
+//     if (err == VK_SUCCESS)
+//         return;
+//     fprintf(stderr, "[vulkan] Error: VkResult = %d\n", err);
+//     if (err < 0)
+//         abort();
+// }
 
-static void check_vk_result(VkResult err)
-{
-    if (err == VK_SUCCESS)
-        return;
-    fprintf(stderr, "[vulkan] Error: VkResult = %d\n", err);
-    if (err < 0)
-        abort();
-}
+// static void check_vk_result(VkResult err)
+// {
+//     if (err == VK_SUCCESS)
+//         return;
+//     fprintf(stderr, "[vulkan] >>? Error: VkResult = %d\n", err);
+//     if (err == VK_ERROR_OUT_OF_DATE_KHR || err == VK_SUBOPTIMAL_KHR) {
+//         // Non-fatal: Swapchain needs rebuild (e.g., resize, surface change)
+//         g_SwapChainRebuild = true;
+//         return;  // Don't abort—let main loop rebuild
+//     }
+//     if (err < 0)  // Fatal errors (e.g., -1 OUT_OF_HOST_MEMORY, -3 DEVICE_LOST)
+//         abort();
+// }
+
+
+
 
 #ifdef APP_USE_VULKAN_DEBUG_REPORT
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_report(VkDebugReportFlagsEXT flags, VkDebugReportObjectTypeEXT objectType, uint64_t object, size_t location, int32_t messageCode, const char* pLayerPrefix, const char* pMessage, void* pUserData)
@@ -366,16 +443,27 @@ static void SetupVulkan(ImVector<const char*> instance_extensions)
     {
         VkDescriptorPoolSize pool_sizes[] =
         {
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE },
+            // { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE },
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 100 },  // Increase from IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE (usually 1)
         };
+        
+
         VkDescriptorPoolCreateInfo pool_info = {};
         pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-        pool_info.maxSets = 0;
-        for (VkDescriptorPoolSize& pool_size : pool_sizes)
-            pool_info.maxSets += pool_size.descriptorCount;
+        pool_info.maxSets = 100;  // Increase for multiple textures
         pool_info.poolSizeCount = (uint32_t)IM_ARRAYSIZE(pool_sizes);
         pool_info.pPoolSizes = pool_sizes;
+        
+        // ===========
+        // VkDescriptorPoolCreateInfo pool_info = {};
+        // pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        // pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        // pool_info.maxSets = 0;
+        // for (VkDescriptorPoolSize& pool_size : pool_sizes)
+        //     pool_info.maxSets += pool_size.descriptorCount;
+        // pool_info.poolSizeCount = (uint32_t)IM_ARRAYSIZE(pool_sizes);
+        // pool_info.pPoolSizes = pool_sizes;
         err = vkCreateDescriptorPool(g_Device, &pool_info, g_Allocator, &g_DescriptorPool);
         check_vk_result(err);
     }
@@ -609,6 +697,51 @@ int main(int argc, char** argv)
     if (!InitLua(argc > 1 ? argv[1] : NULL)) {
         printf("Lua initialization failed, continuing without Lua\n");
     }
+    // Always ensure ImGui.textures table exists (create if nil) - FIXED STACK POPS
+    if (L) {
+        lua_getglobal(L, "ImGui");
+        if (lua_istable(L, -1)) {
+            lua_getfield(L, -1, "textures");  // Stack: [ImGui, textures (nil or table)]
+            if (lua_isnil(L, -1)) {  // Better: Check nil specifically (not !istable, as empty table is table)
+                lua_pop(L, 1);  // Pop nil. Stack: [ImGui]
+                lua_newtable(L);  // Create {}. Stack: [ImGui, {}]
+                lua_setfield(L, -2, "textures");  // ImGui.textures = {} (pops {}). Stack: [ImGui]
+                printf("Created ImGui.textures table\n");
+            } else {
+                lua_pop(L, 1);  // Pop existing textures. Stack: [ImGui]
+            }
+            // Now stack: [ImGui] - ready for field set below
+        } else {
+            printf("ImGui global not a table (Lua init issue?)\n");
+            lua_pop(L, 1);  // Pop invalid ImGui
+        }
+        // Do NOT pop ImGui here - reuse for exposure below
+    }
+
+    // Optional: Pre-load one for demo (now with fixed pops)
+    TextureData initialTex = CreateTexture(g_Device, g_PhysicalDevice, g_CommandPool, g_Queue, "character.png");
+    if (initialTex.descriptorSet) {
+        g_TextureMap["character"] = initialTex;  // Store by name
+
+        // Expose to Lua (reuse ImGui from above if possible, but safe re-get)
+        if (L) {
+            lua_getglobal(L, "ImGui");  // Stack: [ImGui]
+            if (lua_istable(L, -1)) {
+                lua_getfield(L, -1, "textures");  // Stack: [ImGui, textures]
+                if (lua_istable(L, -1)) {
+                    lua_pushlightuserdata(L, (void*)initialTex.descriptorSet);  // Stack: [ImGui, textures, userdata]
+                    lua_setfield(L, -2, "character");  // Sets textures.character = userdata (pops userdata). Stack: [ImGui, textures]
+                    printf("Exposed character to ImGui.textures.character (addr: %p)\n", initialTex.descriptorSet);
+                } else {
+                    printf("textures not table during exposure\n");
+                }
+                lua_pop(L, 1);  // Pop textures. Stack: [ImGui]
+            }
+            lua_pop(L, 1);  // Pop ImGui. Stack: empty
+        }
+    } else {
+        printf("Failed to pre-load character.png (check file/path)\n");
+    }
 
     // Load Fonts
     // - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
@@ -638,6 +771,7 @@ int main(int argc, char** argv)
         }
         lua_pop(L, 1);  // Pop the ImGui table
     }
+
 
 
     // Our state
@@ -696,24 +830,24 @@ int main(int argc, char** argv)
             ImGui::ShowDemoWindow(&show_demo_window);
 
 
-        // Example ImGui window to display the image
-        ImGui::Begin("Image Window");
-        if (myTexture.descriptorSet) {
-            ImGui::Image(myTexture.descriptorSet, ImVec2(200, 200)); // Adjust size as needed
-        } else {
-            ImGui::Text("Failed to load texture");
-        }
-        ImGui::End();
+        // // Example ImGui window to display the image
+        // ImGui::Begin("Image Window");
+        // if (myTexture.descriptorSet) {
+        //     ImGui::Image(myTexture.descriptorSet, ImVec2(200, 200)); // Adjust size as needed
+        // } else {
+        //     ImGui::Text("Failed to load texture");
+        // }
+        // ImGui::End();
 
 
-        // Example ImGui window to display the image
-        ImGui::Begin("Image Window");
-        if (myTexture.descriptorSet) {
-            ImGui::Image(myTexture.descriptorSet, ImVec2(200, 200)); // Adjust size as needed
-        } else {
-            ImGui::Text("Failed to load texture");
-        }
-        ImGui::End();
+        // // Example ImGui window to display the image
+        // ImGui::Begin("Image Window");
+        // if (myTexture.descriptorSet) {
+        //     ImGui::Image(myTexture.descriptorSet, ImVec2(200, 200)); // Adjust size as needed
+        // } else {
+        //     ImGui::Text("Failed to load texture");
+        // }
+        // ImGui::End();
 
         // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
         {
@@ -769,13 +903,18 @@ int main(int argc, char** argv)
     check_vk_result(err);
 
     // Free texture resources
-    if (myTexture.image) vkDestroyImage(g_Device, myTexture.image, g_Allocator);
-    if (myTexture.memory) vkFreeMemory(g_Device, myTexture.memory, g_Allocator);
-    if (myTexture.imageView) vkDestroyImageView(g_Device, myTexture.imageView, g_Allocator);
-    if (myTexture.sampler) vkDestroySampler(g_Device, myTexture.sampler, g_Allocator);
-    if (myTexture.descriptorSet) ImGui_ImplVulkan_RemoveTexture(myTexture.descriptorSet);
+    // if (myTexture.image) vkDestroyImage(g_Device, myTexture.image, g_Allocator);
+    // if (myTexture.memory) vkFreeMemory(g_Device, myTexture.memory, g_Allocator);
+    // if (myTexture.imageView) vkDestroyImageView(g_Device, myTexture.imageView, g_Allocator);
+    // if (myTexture.sampler) vkDestroySampler(g_Device, myTexture.sampler, g_Allocator);
+    // if (myTexture.descriptorSet) ImGui_ImplVulkan_RemoveTexture(myTexture.descriptorSet);
 
-
+    // Unload all stored textures
+    for (auto& pair : g_TextureMap) {
+        DestroyTexture(g_Device, pair.second);
+    }
+    g_TextureMap.clear();
+    //
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();

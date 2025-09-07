@@ -582,6 +582,7 @@ static int lua_imgui_set_column_offset(lua_State* L) {
 static int lua_imgui_image(lua_State* L) {
     // Get texture_id as light userdata (pointer to VkDescriptorSet)
     ImTextureID texture_id = (ImTextureID)lua_touserdata(L, 1);  // Cast to ImTextureID
+    // ImTextureID texture_id = (ImTextureID)(uintptr_t)lua_touserdata(L, 1);  // Or (intptr_t) for signed
     if (!texture_id) {
         luaL_error(L, "Invalid texture_id (must be userdata/pointer)");
         return 0;
@@ -692,7 +693,8 @@ static int lua_imgui_image_button(lua_State* L) {
     const char* str_id = luaL_checkstring(L, 1);
 
     // Second: texture_id as light userdata (pointer to VkDescriptorSet / ImTextureID)
-    ImTextureID texture_id = (ImTextureID)lua_touserdata(L, 2);
+    // ImTextureID texture_id = (ImTextureID)lua_touserdata(L, 2);
+    ImTextureID texture_id = (ImTextureID)(uintptr_t)lua_touserdata(L, 2);  // Or (intptr_t) for signed
     if (!texture_id) {
         luaL_error(L, "Invalid texture_id (must be userdata/pointer at arg 2)");
         return 0;
@@ -729,6 +731,71 @@ static int lua_imgui_image_button(lua_State* L) {
     lua_pushboolean(L, clicked);
     return 1;
 }
+
+// Lua binding for LoadTexture(path, [name])
+static int lua_imgui_load_texture(lua_State* L) {
+    const char* path = luaL_checkstring(L, 1);
+    const char* name = luaL_optstring(L, 2, nullptr);  // Optional name; use path basename if nil
+
+    // Create and store
+    TextureData tex = CreateTexture(g_Device, g_PhysicalDevice, g_CommandPool, g_Queue, path);
+    printf("load texture?\n");
+    if (tex.descriptorSet) {
+    std::string texName = name ? name : std::string(path);
+    g_TextureMap[texName] = tex;
+
+    // Expose to ImGui.textures[name] (create table if nil)
+    lua_getglobal(L, "ImGui");
+    if (lua_istable(L, -1)) {
+        lua_getfield(L, -1, "textures");
+        if (!lua_istable(L, -1)) {
+            lua_pop(L, 1);  // Pop nil
+            lua_newtable(L);
+            lua_setfield(L, -2, "textures");
+        }
+        // Now set field
+        lua_pushlightuserdata(L, (void*)tex.descriptorSet);
+        lua_setfield(L, -2, texName.c_str());
+        }
+        lua_pop(L, 2);  // Pop textures and ImGui
+
+        lua_pushlightuserdata(L, (void*)tex.descriptorSet);
+        printf("Loaded and stored %s as '%s' (addr: %p)\n", path, texName.c_str(), tex.descriptorSet);
+        return 1;
+    } else {
+        printf("DescriptorSet invalid for %s (pool full or Vulkan error?)\n", path);
+        lua_pushnil(L);
+        return 1;
+    }
+}
+
+// Lua binding for UnloadTexture(name)
+static int lua_imgui_unload_texture(lua_State* L) {
+    const char* name = luaL_checkstring(L, 1);
+    auto it = g_TextureMap.find(name);
+    if (it != g_TextureMap.end()) {
+        DestroyTexture(g_Device, it->second);
+        g_TextureMap.erase(it);
+
+        // Remove from ImGui.textures
+        lua_getglobal(L, "ImGui");
+        lua_getfield(L, -1, "textures");
+        if (lua_istable(L, -1)) {
+            lua_pushnil(L);
+            lua_setfield(L, -2, name);
+        }
+        lua_pop(L, 2);
+
+        lua_pushboolean(L, true);
+        printf("Unloaded '%s'\n", name);
+    } else {
+        lua_pushboolean(L, false);
+        printf("Texture '%s' not found\n", name);
+    }
+    return 1;
+}
+
+
 
 
 // Initialize Lua and load script.lua
@@ -853,6 +920,14 @@ bool InitLua(const char* script_file) {
 
     lua_pushcfunction(L, lua_imgui_image_button);
     lua_setfield(L, -2, "ImageButton");
+
+    //vulkan to lua
+    lua_pushcfunction(L, lua_imgui_load_texture);
+    lua_setfield(L, -2, "LoadTexture");
+    //vulkan to lua
+    lua_pushcfunction(L, lua_imgui_unload_texture);
+    lua_setfield(L, -2, "UnloadTexture");
+
 
     // Register ImGuiInputTextFlags
     lua_pushinteger(L, ImGuiInputTextFlags_EnterReturnsTrue);
