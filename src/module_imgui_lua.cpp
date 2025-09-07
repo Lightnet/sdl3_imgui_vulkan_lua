@@ -490,33 +490,6 @@ static int lua_imgui_plot_histogram(lua_State* L) {
     return 0;
 }
 
-// Lua binding for ImGui::PlotBars
-// static int lua_imgui_plot_bars(lua_State* L) {
-//     const char* label = luaL_checkstring(L, 1);
-//     luaL_checktype(L, 2, LUA_TTABLE);
-//     const char* overlay_text = luaL_optstring(L, 3, nullptr);
-//     float scale_min = luaL_optnumber(L, 4, FLT_MAX);
-//     float scale_max = luaL_optnumber(L, 5, FLT_MAX);
-//     float graph_width = luaL_optnumber(L, 6, 0.0f);
-//     float graph_height = luaL_optnumber(L, 7, 0.0f);
-
-//     // Get values from Lua table
-//     int value_count = luaL_len(L, 2);
-//     std::vector<float> values(value_count);
-//     for (int i = 0; i < value_count; ++i) {
-//         lua_rawgeti(L, 2, i + 1);
-//         if (lua_isnumber(L, -1)) {
-//             values[i] = (float)lua_tonumber(L, -1);
-//         } else {
-//             values[i] = 0.0f;
-//         }
-//         lua_pop(L, 1);
-//     }
-
-//     ImGui::PlotBars(label, values.data(), value_count, 0, overlay_text, scale_min, scale_max, ImVec2(graph_width, graph_height));
-//     return 0;
-// }
-
 // Lua binding for ImGui::BeginTable
 static int lua_imgui_begin_table(lua_State* L) {
     const char* str_id = luaL_checkstring(L, 1);
@@ -603,6 +576,56 @@ static int lua_imgui_set_column_offset(lua_State* L) {
     ImGui::SetColumnOffset(column_index, offset_x);
     return 0;
 }
+
+// Lua binding for ImGui::Image
+// static int lua_imgui_image(lua_State* L) {
+//     // Expect texture_id as integer or light userdata
+//     ImTextureID texture_id = (ImTextureID)(intptr_t)luaL_checkinteger(L, 1);
+//     float size_x = luaL_checknumber(L, 2);
+//     float size_y = luaL_checknumber(L, 3);
+//     float uv0_x = luaL_optnumber(L, 4, 0.0f);
+//     float uv0_y = luaL_optnumber(L, 5, 0.0f);
+//     float uv1_x = luaL_optnumber(L, 6, 1.0f);
+//     float uv1_y = luaL_optnumber(L, 7, 1.0f);
+//     float tint_r = luaL_optnumber(L, 8, 1.0f);
+//     float tint_g = luaL_optnumber(L, 9, 1.0f);
+//     float tint_b = luaL_optnumber(L, 10, 1.0f);
+//     float tint_a = luaL_optnumber(L, 11, 1.0f);
+//     float border_r = luaL_optnumber(L, 12, 0.0f);
+//     float border_g = luaL_optnumber(L, 13, 0.0f);
+//     float border_b = luaL_optnumber(L, 14, 0.0f);
+//     float border_a = luaL_optnumber(L, 15, 0.0f);
+
+//     ImGui::Image(texture_id, ImVec2(size_x, size_y), ImVec2(uv0_x, uv0_y), ImVec2(uv1_x, uv1_y),
+//                  ImVec4(tint_r, tint_g, tint_b, tint_a), ImVec4(border_r, border_g, border_b, border_a));
+//     return 0;
+// }
+
+// // Lua binding for ImGui::ImageButton
+// static int lua_imgui_image_button(lua_State* L) {
+//     // Expect texture_id as integer or light userdata
+//     ImTextureID texture_id = (ImTextureID)(intptr_t)luaL_checkinteger(L, 1);
+//     float size_x = luaL_checknumber(L, 2);
+//     float size_y = luaL_checknumber(L, 3);
+//     float uv0_x = luaL_optnumber(L, 4, 0.0f);
+//     float uv0_y = luaL_optnumber(L, 5, 0.0f);
+//     float uv1_x = luaL_optnumber(L, 6, 1.0f);
+//     float uv1_y = luaL_optnumber(L, 7, 1.0f);
+//     int frame_padding = luaL_optinteger(L, 8, -1);
+//     float bg_r = luaL_optnumber(L, 9, 0.0f);
+//     float bg_g = luaL_optnumber(L, 10, 0.0f);
+//     float bg_b = luaL_optnumber(L, 11, 0.0f);
+//     float bg_a = luaL_optnumber(L, 12, 0.0f);
+//     float tint_r = luaL_optnumber(L, 13, 1.0f);
+//     float tint_g = luaL_optnumber(L, 14, 1.0f);
+//     float tint_b = luaL_optnumber(L, 15, 1.0f);
+//     float tint_a = luaL_optnumber(L, 16, 1.0f);
+
+//     bool clicked = ImGui::ImageButton(texture_id, ImVec2(size_x, size_y), ImVec2(uv0_x, uv0_y), ImVec2(uv1_x, uv1_y),
+//                                       frame_padding, ImVec4(bg_r, bg_g, bg_b, bg_a), ImVec4(tint_r, tint_g, tint_b, tint_a));
+//     lua_pushboolean(L, clicked);
+//     return 1;
+// }
 
 
 // Initialize Lua and load script.lua

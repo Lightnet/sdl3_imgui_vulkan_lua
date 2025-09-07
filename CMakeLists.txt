@@ -149,8 +149,9 @@ set(SRC_FILES
 
 # Create executable
 add_executable(${APP_NAME}
-    src/main.cpp
+    # src/main.cpp
     # src/imgui_image.cpp
+    src/sdl_imgui_vulkan_image.cpp
     ${SRC_FILES}
 )
 
