@@ -30,7 +30,7 @@
 
   Using the SDL as base for easy cross platform inputs and others. As for the gpu is vullkan. But use vulkan header and vulkan loader to build vulkan for better update.
 
-# Features:
+# Lua Features:
 - [ ] Variable Flags
   - [ ] work in progress
 ## window:
@@ -66,6 +66,11 @@
 - [x] image button (does not have load file yet)
 - [x] vertical slider
 - [x] bullet point
+- [x] TextColored
+
+## lua api
+- [ ]
+
 
 ### layout:
 - [x] SameLine
@@ -88,7 +93,9 @@
 
 ## theme
 - [x] light theme
-- [x] light theme
+- [x] dark theme
+- [ ] StyleCustom (easy access not party of imgui)
+- [ ] GetStyleColor (easy access not party of imgui)
 - [ ] custom theme
   - [x] ImGuiCol_name (testing)
 

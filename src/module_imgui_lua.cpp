@@ -161,6 +161,24 @@ static int lua_imgui_style_custom(lua_State* L) {
     return 0;
 }
 
+// Lua binding for getting current ImGui style color (by ImGuiCol_* index; returns r, g, b, a)
+static int lua_imgui_get_style_color(lua_State* L) {
+    int col = luaL_checkinteger(L, 1);  // ImGuiCol_* enum value (e.g., ImGui.Col_WindowBg)
+    ImGuiStyle& style = ImGui::GetStyle();
+    if (col < 0 || col >= ImGuiCol_COUNT) {
+        luaL_error(L, "Invalid color index: %d (must be 0 to %d)", col, ImGuiCol_COUNT - 1);
+        return 0;
+    }
+    ImVec4 color = style.Colors[col];
+    lua_pushnumber(L, color.x);  // r
+    lua_pushnumber(L, color.y);  // g
+    lua_pushnumber(L, color.z);  // b
+    lua_pushnumber(L, color.w);  // a
+    return 4;
+}
+
+
+
 // REFERENCE DATA
 // Custom dark theme setup (adapted from imgui_demo.cpp dark style)
 void ApplyDarkTheme() {
@@ -481,6 +499,140 @@ static int lua_imgui_color_edit3(lua_State* L) {
     lua_pushnumber(L, color[2]);
     return 4;
 }
+
+// Lua binding for ImGui::ColorEdit4 (RGBA color editor)
+static int lua_imgui_color_edit4(lua_State* L) {
+    const char* label = luaL_checkstring(L, 1);
+    float r = (float)luaL_checknumber(L, 2);
+    float g = (float)luaL_checknumber(L, 3);
+    float b = (float)luaL_checknumber(L, 4);
+    float a = (float)luaL_checknumber(L, 5);
+    int flags = 0;
+    if (lua_gettop(L) >= 6) {
+        if (lua_istable(L, 6)) {
+            // Handle flags as a table
+            int len = luaL_len(L, 6);
+            for (int i = 1; i <= len; ++i) {
+                lua_rawgeti(L, 6, i);
+                if (lua_isnumber(L, -1)) {
+                    flags |= lua_tointeger(L, -1);
+                }
+                lua_pop(L, 1);
+            }
+        } else if (lua_isnumber(L, 6)) {
+            // Handle single integer flag
+            flags = luaL_optinteger(L, 6, 0);
+        }
+    }
+    float color[4] = {r, g, b, a};
+    bool changed = ImGui::ColorEdit4(label, color, flags);
+    lua_pushboolean(L, changed);
+    lua_pushnumber(L, color[0]);
+    lua_pushnumber(L, color[1]);
+    lua_pushnumber(L, color[2]);
+    lua_pushnumber(L, color[3]);
+    return 5;
+}
+
+// Lua binding for ImGui::ColorPicker3 (RGB color picker)
+static int lua_imgui_color_picker3(lua_State* L) {
+    const char* label = luaL_checkstring(L, 1);
+    float r = (float)luaL_checknumber(L, 2);
+    float g = (float)luaL_checknumber(L, 3);
+    float b = (float)luaL_checknumber(L, 4);
+    int flags = 0;
+    if (lua_gettop(L) >= 5) {
+        if (lua_istable(L, 5)) {
+            // Handle flags as a table
+            int len = luaL_len(L, 5);
+            for (int i = 1; i <= len; ++i) {
+                lua_rawgeti(L, 5, i);
+                if (lua_isnumber(L, -1)) {
+                    flags |= lua_tointeger(L, -1);
+                }
+                lua_pop(L, 1);
+            }
+        } else if (lua_isnumber(L, 5)) {
+            // Handle single integer flag
+            flags = luaL_optinteger(L, 5, 0);
+        }
+    }
+    float color[3] = {r, g, b};
+    bool changed = ImGui::ColorPicker3(label, color, flags);
+    lua_pushboolean(L, changed);
+    lua_pushnumber(L, color[0]);
+    lua_pushnumber(L, color[1]);
+    lua_pushnumber(L, color[2]);
+    return 4;
+}
+
+// Lua binding for ImGui::ColorPicker4 (RGBA color picker)
+static int lua_imgui_color_picker4(lua_State* L) {
+    const char* label = luaL_checkstring(L, 1);
+    float r = (float)luaL_checknumber(L, 2);
+    float g = (float)luaL_checknumber(L, 3);
+    float b = (float)luaL_checknumber(L, 4);
+    float a = (float)luaL_checknumber(L, 5);
+    int flags = 0;
+    if (lua_gettop(L) >= 6) {
+        if (lua_istable(L, 6)) {
+            // Handle flags as a table
+            int len = luaL_len(L, 6);
+            for (int i = 1; i <= len; ++i) {
+                lua_rawgeti(L, 6, i);
+                if (lua_isnumber(L, -1)) {
+                    flags |= lua_tointeger(L, -1);
+                }
+                lua_pop(L, 1);
+            }
+        } else if (lua_isnumber(L, 6)) {
+            // Handle single integer flag
+            flags = luaL_optinteger(L, 6, 0);
+        }
+    }
+    float color[4] = {r, g, b, a};
+    bool changed = ImGui::ColorPicker4(label, color, flags);
+    lua_pushboolean(L, changed);
+    lua_pushnumber(L, color[0]);
+    lua_pushnumber(L, color[1]);
+    lua_pushnumber(L, color[2]);
+    lua_pushnumber(L, color[3]);
+    return 5;
+}
+
+// Lua binding for ImGui::ColorButton (color swatch button)
+static int lua_imgui_color_button(lua_State* L) {
+    const char* desc_id = luaL_checkstring(L, 1);  // ID for the button
+    float r = (float)luaL_checknumber(L, 2);
+    float g = (float)luaL_checknumber(L, 3);
+    float b = (float)luaL_checknumber(L, 4);
+    float a = (float)luaL_optnumber(L, 5, 1.0f);  // Default alpha 1.0
+    float size_x = luaL_optnumber(L, 6, 0.0f);    // Default auto-size
+    float size_y = luaL_optnumber(L, 7, 0.0f);
+    int flags = 0;
+    if (lua_gettop(L) >= 8) {
+        if (lua_istable(L, 8)) {
+            // Handle flags as a table
+            int len = luaL_len(L, 8);
+            for (int i = 1; i <= len; ++i) {
+                lua_rawgeti(L, 8, i);
+                if (lua_isnumber(L, -1)) {
+                    flags |= lua_tointeger(L, -1);
+                }
+                lua_pop(L, 1);
+            }
+        } else if (lua_isnumber(L, 8)) {
+            // Handle single integer flag
+            flags = luaL_optinteger(L, 8, 0);
+        }
+    }
+    ImVec4 col = ImVec4(r, g, b, a);
+    bool clicked = ImGui::ColorButton(desc_id, col, flags, ImVec2(size_x, size_y));
+    lua_pushboolean(L, clicked);
+    return 1;
+}
+
+
 
 // Lua binding for ImGui::SameLine
 static int lua_imgui_same_line(lua_State* L) {
@@ -1009,6 +1161,17 @@ static int lua_imgui_image_button(lua_State* L) {
     return 1;
 }
 
+// Lua binding for ImGui::TextColored (text with custom RGBA color)
+static int lua_imgui_text_colored(lua_State* L) {
+    float r = (float)luaL_checknumber(L, 1);
+    float g = (float)luaL_checknumber(L, 2);
+    float b = (float)luaL_checknumber(L, 3);
+    float a = (float)luaL_checknumber(L, 4);
+    const char* text = luaL_checkstring(L, 5);
+    ImGui::TextColored(ImVec4(r, g, b, a), "%s", text);
+    return 0;
+}
+
 
 //===============================================
 // Initialize Lua and load script.lua
@@ -1040,6 +1203,13 @@ bool InitLua(const char* script_file) {
     lua_setfield(L, -2, "StyleClassic");
     lua_pushcfunction(L, lua_imgui_style_custom);
     lua_setfield(L, -2, "StyleCustom");
+    // Style color getter
+    lua_pushcfunction(L, lua_imgui_get_style_color);
+    lua_setfield(L, -2, "GetStyleColor");
+
+    // Text with color
+    lua_pushcfunction(L, lua_imgui_text_colored);
+    lua_setfield(L, -2, "TextColored");
 
 
     // Register ImGui functions
@@ -1071,8 +1241,18 @@ bool InitLua(const char* script_file) {
     lua_setfield(L, -2, "Checkbox");
     lua_pushcfunction(L, lua_imgui_radio_button);
     lua_setfield(L, -2, "RadioButton");
+    // Color picker bindings
     lua_pushcfunction(L, lua_imgui_color_edit3);
     lua_setfield(L, -2, "ColorEdit3");
+    lua_pushcfunction(L, lua_imgui_color_edit4);
+    lua_setfield(L, -2, "ColorEdit4");
+    lua_pushcfunction(L, lua_imgui_color_picker3);
+    lua_setfield(L, -2, "ColorPicker3");
+    lua_pushcfunction(L, lua_imgui_color_picker4);
+    lua_setfield(L, -2, "ColorPicker4");
+    lua_pushcfunction(L, lua_imgui_color_button);
+    lua_setfield(L, -2, "ColorButton");
+
     lua_pushcfunction(L, lua_imgui_same_line);
     lua_setfield(L, -2, "SameLine");
     lua_pushcfunction(L, lua_imgui_separator);
@@ -1159,11 +1339,78 @@ bool InitLua(const char* script_file) {
     lua_pushinteger(L, ImGuiInputTextFlags_ReadOnly);
     lua_setfield(L, -2, "ReadOnly");
 
-    // Register ImGuiColorEditFlags
+    // ImGuiColorEditFlags (for use with ColorEdit/ColorPicker/ColorButton)
+    // lua_pushinteger(L, ImGuiColorEditFlags_RGB); //do not exist
+    // lua_setfield(L, -2, "ColorEditFlags_RGB");
+    // lua_pushinteger(L, ImGuiColorEditFlags_HSV); //do not exist
+    // lua_setfield(L, -2, "ColorEditFlags_HSV");
+    // lua_pushinteger(L, ImGuiColorEditFlags_HEX); //do not exist
+    // lua_setfield(L, -2, "ColorEditFlags_HEX");
     lua_pushinteger(L, ImGuiColorEditFlags_NoAlpha);
     lua_setfield(L, -2, "NoAlpha");
     lua_pushinteger(L, ImGuiColorEditFlags_HDR);
     lua_setfield(L, -2, "HDR");
+
+    lua_pushinteger(L, ImGuiColorEditFlags_NoPicker);
+    lua_setfield(L, -2, "ColorEditFlags_NoPicker");
+    lua_pushinteger(L, ImGuiColorEditFlags_NoOptions);
+    lua_setfield(L, -2, "ColorEditFlags_NoOptions");
+    lua_pushinteger(L, ImGuiColorEditFlags_NoSmallPreview);
+    lua_setfield(L, -2, "ColorEditFlags_NoSmallPreview");
+    lua_pushinteger(L, ImGuiColorEditFlags_NoInputs);
+    lua_setfield(L, -2, "ColorEditFlags_NoInputs");
+    lua_pushinteger(L, ImGuiColorEditFlags_NoTooltip);
+    lua_setfield(L, -2, "ColorEditFlags_NoTooltip");
+    lua_pushinteger(L, ImGuiColorEditFlags_NoLabel);
+    lua_setfield(L, -2, "ColorEditFlags_NoLabel");
+    lua_pushinteger(L, ImGuiColorEditFlags_NoSidePreview);
+    lua_setfield(L, -2, "ColorEditFlags_NoSidePreview");
+    lua_pushinteger(L, ImGuiColorEditFlags_Uint8);
+    lua_setfield(L, -2, "ColorEditFlags_Uint8");
+    lua_pushinteger(L, ImGuiColorEditFlags_Float);
+    lua_setfield(L, -2, "ColorEditFlags_Float");
+    lua_pushinteger(L, ImGuiColorEditFlags_PickerHueWheel);
+    lua_setfield(L, -2, "ColorEditFlags_PickerHueWheel");
+    lua_pushinteger(L, ImGuiColorEditFlags_PickerHueBar);
+    lua_setfield(L, -2, "ColorEditFlags_PickerHueBar");
+    lua_pushinteger(L, ImGuiColorEditFlags_InputRGB);
+    lua_setfield(L, -2, "ColorEditFlags_InputRGB");
+    lua_pushinteger(L, ImGuiColorEditFlags_InputHSV);
+    lua_setfield(L, -2, "ColorEditFlags_InputHSV");
+    lua_pushinteger(L, ImGuiColorEditFlags_DefaultOptions_);
+    lua_setfield(L, -2, "ColorEditFlags_DefaultOptions");
+    lua_pushinteger(L, ImGuiColorEditFlags_DisplayRGB);
+    lua_setfield(L, -2, "ColorEditFlags_DisplayRGB");
+    lua_pushinteger(L, ImGuiColorEditFlags_DisplayHSV);
+    lua_setfield(L, -2, "ColorEditFlags_DisplayHSV");
+    lua_pushinteger(L, ImGuiColorEditFlags_DisplayHex);
+    lua_setfield(L, -2, "ColorEditFlags_DisplayHex");
+    lua_pushinteger(L, ImGuiColorEditFlags_AlphaBar);
+    lua_setfield(L, -2, "ColorEditFlags_AlphaBar");
+    lua_pushinteger(L, ImGuiColorEditFlags_AlphaPreview);
+    lua_setfield(L, -2, "ColorEditFlags_AlphaPreview");
+    lua_pushinteger(L, ImGuiColorEditFlags_AlphaPreviewHalf);
+    lua_setfield(L, -2, "ColorEditFlags_AlphaPreviewHalf");
+    // lua_pushinteger(L, ImGuiColorEditFlags_HDR_RGB);
+    // lua_setfield(L, -2, "ColorEditFlags_HDR_RGB");
+    lua_pushinteger(L, ImGuiColorEditFlags_Float);
+    lua_setfield(L, -2, "ColorEditFlags_Float");
+    lua_pushinteger(L, ImGuiColorEditFlags_PickerHueWheel);
+    lua_setfield(L, -2, "ColorEditFlags_PickerHueWheel");
+    lua_pushinteger(L, ImGuiColorEditFlags_InputMask_);
+    lua_setfield(L, -2, "ColorEditFlags_InputMask");
+    lua_pushinteger(L, ImGuiColorEditFlags_DataTypeMask_);
+    lua_setfield(L, -2, "ColorEditFlags_DataTypeMask");
+    // lua_pushinteger(L, ImGuiColorEditFlags_OptionsMask_);
+    // lua_setfield(L, -2, "ColorEditFlags_OptionsMask");
+    lua_pushinteger(L, ImGuiColorEditFlags_AlphaMask_);
+    lua_setfield(L, -2, "ColorEditFlags_AlphaMask");
+    // lua_pushinteger(L, ImGuiColorEditFlags_HDRMask_);
+    // lua_setfield(L, -2, "ColorEditFlags_HDRMask");
+    lua_pushinteger(L, ImGuiColorEditFlags_PickerMask_);
+    lua_setfield(L, -2, "ColorEditFlags_PickerMask");
+    lua_pushinteger(L, ImGuiColorEditFlags_NoOptions);  // Already have, but ensure
+    lua_setfield(L, -2, "ColorEditFlags_NoOptions");
 
     // Register ImGuiComboFlags
     lua_pushinteger(L, ImGuiComboFlags_PopupAlignLeft);
