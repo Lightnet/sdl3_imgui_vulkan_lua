@@ -1,3 +1,4 @@
+// Test for image loading.
 // Dear ImGui: standalone example application for SDL3 + Vulkan
 
 // Learn about Dear ImGui:

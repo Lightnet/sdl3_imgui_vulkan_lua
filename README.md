@@ -86,8 +86,15 @@
 - [x] MenuItem
 - [x] BeginMainMenuBar
 
+## theme
+- [x] light theme
+- [x] light theme
+- [ ] custom theme
+  - [x] ImGuiCol_name (testing)
+
 # vulkan:
 - [x] image load texture.
+- [ ] image unload texture (not working real time)
   Simple image test.
 
 ## Notes:

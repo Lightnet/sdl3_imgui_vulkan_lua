@@ -1,3 +1,5 @@
+// main entry
+// SDL 3.2, imgui 1.92.2, lua 5.4
 // Dear ImGui: standalone example application for SDL3 + Vulkan
 
 // Learn about Dear ImGui:
@@ -58,6 +60,8 @@ VkCommandPool            g_CommandPool = VK_NULL_HANDLE; // Add this
 static ImGui_ImplVulkanH_Window g_MainWindowData;
 static uint32_t                 g_MinImageCount = 2;
 static bool                     g_SwapChainRebuild = false;
+static bool g_DeviceLost = false;
+
 
 // // Add these globals or struct to manage the texture
 // struct TextureData {
@@ -71,35 +75,33 @@ static bool                     g_SwapChainRebuild = false;
 // Global map for textures (non-static, matches extern)
 std::map<std::string, TextureData> g_TextureMap;
 
+
 static void check_vk_result(VkResult err)
 {
     if (err == VK_SUCCESS)
         return;
-    fprintf(stderr, "[vulkan] Error: VkResult = %d (handled if out-of-date)\n", err);
+    // fprintf(stderr, "[vulkan] Error: VkResult = %d (handled if out-of-date or device lost)\n", err);
+    // g_SwapChainRebuild = true;
+    // g_DeviceLost = true;
     if (err == VK_ERROR_OUT_OF_DATE_KHR || err == VK_SUBOPTIMAL_KHR) {
-        // Non-fatal swapchain issues: Trigger rebuild next frame
         g_SwapChainRebuild = true;
-        return;  // Continue—no abort
+        return;
     }
-    if (err < 0)  // Fatal (e.g., -1 OUT_OF_HOST_MEMORY, -3 DEVICE_LOST)
+    if (err == VK_ERROR_DEVICE_LOST) {  // NEW: Handle non-fatally
+        // fprintf(stderr, "[vulkan] Device lost during operation! Flagging for recovery.\n");
+        g_DeviceLost = true;  // Set flag for main loop to handle (see below)
+        g_SwapChainRebuild = true;  // Also trigger swapchain rebuild as a partial fix
+        return;  // Do NOT abort(); continue to allow app to run (invalid ops will fail silently)
+    }
+    if (err < 0)  // Still fatal for other errors (e.g., OUT_OF_HOST_MEMORY = -1)
         abort();
 }
 
 
 // Function to unload a single texture
 void DestroyTexture(VkDevice device, TextureData& texture) {
-    // Wait for device idle to ensure no pending GPU ops (prevents out-of-date errors)
-    // vkDeviceWaitIdle(device);
-    printf("destory image...\n");
+    printf("Destroying image...\n");
     
-    VkResult err = vkDeviceWaitIdle(device);
-    check_vk_result(err);  // Now tolerates -4 if any
-
-    
-    if (texture.descriptorSet) {
-        ImGui_ImplVulkan_RemoveTexture(texture.descriptorSet);
-        texture.descriptorSet = VK_NULL_HANDLE;
-    }
     if (texture.sampler) {
         vkDestroySampler(device, texture.sampler, g_Allocator);
         texture.sampler = VK_NULL_HANDLE;
@@ -112,16 +114,19 @@ void DestroyTexture(VkDevice device, TextureData& texture) {
         vkDestroyImage(device, texture.image, g_Allocator);
         texture.image = VK_NULL_HANDLE;
     }
-    //this error crash while unloading from lua script?
-    // vkDeviceWaitIdle(device);
     if (texture.memory) {
         vkFreeMemory(device, texture.memory, g_Allocator);
         texture.memory = VK_NULL_HANDLE;
     }
-    // g_SwapChainRebuild = true;
-    // err = vkDeviceWaitIdle(device);
-    // check_vk_result(err);  // Now tolerates -4 if any
-
+    if (texture.descriptorSet) {
+        ImGui_ImplVulkan_RemoveTexture(texture.descriptorSet);
+        texture.descriptorSet = VK_NULL_HANDLE;
+    }
+    
+    // NEW: Wait idle AFTER all destructions to sync GPU (prevents loss from pending reads)
+    // VkResult err = vkDeviceWaitIdle(device);
+    // check_vk_result(err);  // Now handles -4 without abort
+    
     printf("Unloaded texture\n");
 }
 
@@ -280,33 +285,6 @@ TextureData CreateTexture(VkDevice device, VkPhysicalDevice physicalDevice, VkCo
 
     return texture;
 }
-
-
-// static void check_vk_result(VkResult err)
-// {
-//     if (err == VK_SUCCESS)
-//         return;
-//     fprintf(stderr, "[vulkan] Error: VkResult = %d\n", err);
-//     if (err < 0)
-//         abort();
-// }
-
-// static void check_vk_result(VkResult err)
-// {
-//     if (err == VK_SUCCESS)
-//         return;
-//     fprintf(stderr, "[vulkan] >>? Error: VkResult = %d\n", err);
-//     if (err == VK_ERROR_OUT_OF_DATE_KHR || err == VK_SUBOPTIMAL_KHR) {
-//         // Non-fatal: Swapchain needs rebuild (e.g., resize, surface change)
-//         g_SwapChainRebuild = true;
-//         return;  // Don't abort—let main loop rebuild
-//     }
-//     if (err < 0)  // Fatal errors (e.g., -1 OUT_OF_HOST_MEMORY, -3 DEVICE_LOST)
-//         abort();
-// }
-
-
-
 
 #ifdef APP_USE_VULKAN_DEBUG_REPORT
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_report(VkDebugReportFlagsEXT flags, VkDebugReportObjectTypeEXT objectType, uint64_t object, size_t location, int32_t messageCode, const char* pLayerPrefix, const char* pMessage, void* pUserData)
@@ -772,8 +750,6 @@ int main(int argc, char** argv)
         lua_pop(L, 1);  // Pop the ImGui table
     }
 
-
-
     // Our state
     bool show_demo_window = true;
     bool show_another_window = false;
@@ -783,6 +759,11 @@ int main(int argc, char** argv)
     bool done = false;
     while (!done)
     {
+        // if (g_DeviceLost){
+        //     // printf("g_DeviceLost yes\n");
+        // }else{
+        //     // printf("g_DeviceLost no\n");
+        // }
         // Poll and handle events (inputs, window resize, etc.)
         // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
         // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
@@ -797,6 +778,17 @@ int main(int argc, char** argv)
                 done = true;
             if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && event.window.windowID == SDL_GetWindowID(window))
                 done = true;
+        }
+
+        if (g_DeviceLost) {
+            fprintf(stderr, "[vulkan] Recovering from device loss...\n");
+            // Basic recovery: Wait idle, then rebuild swapchain/window (extend to full CleanupVulkan + reinit if needed)
+            // VkResult err = vkDeviceWaitIdle(g_Device);
+            // check_vk_result(err);
+            
+            // Rebuild swapchain (your existing code handles this via g_SwapChainRebuild)
+            g_SwapChainRebuild = true;
+            g_DeviceLost = false;  // Reset flag after attempt
         }
 
         // [If using SDL_MAIN_USE_CALLBACKS: all code below would likely be your SDL_AppIterate() function]
@@ -817,28 +809,22 @@ int main(int argc, char** argv)
             g_SwapChainRebuild = false;
         }
 
+       
         // Start the Dear ImGui frame
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
 
         // Run Lua draw function
-        RunLuaDraw();
+         if (g_DeviceLost == false){
+            // continue;
+            RunLuaDraw();
+        }
+        
 
         // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
         if (show_demo_window)
             ImGui::ShowDemoWindow(&show_demo_window);
-
-
-        // // Example ImGui window to display the image
-        // ImGui::Begin("Image Window");
-        // if (myTexture.descriptorSet) {
-        //     ImGui::Image(myTexture.descriptorSet, ImVec2(200, 200)); // Adjust size as needed
-        // } else {
-        //     ImGui::Text("Failed to load texture");
-        // }
-        // ImGui::End();
-
 
         // // Example ImGui window to display the image
         // ImGui::Begin("Image Window");

@@ -1,4 +1,8 @@
+// lua 5.4
+// c++
+//===============================================
 // module_imgui_lua.cpp
+//===============================================
 #include "module_imgui_lua.hpp"
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,6 +10,7 @@
 #include <vector>
 #include <string>
 #include "imgui.h"
+#include "imgui_internal.h" // imgui lerp
 
 #ifdef __cplusplus
 extern "C" {
@@ -20,6 +25,279 @@ extern "C" {
 // Lua state
 // static lua_State* L = nullptr;
 lua_State* L = nullptr;  // Now it's a global definition with external linkage
+
+//===============================================
+// Texture Image
+//===============================================
+
+// Lua binding for LoadTexture(path, [name])
+static int lua_imgui_load_texture(lua_State* L) {
+    const char* path = luaL_checkstring(L, 1);
+    const char* name = luaL_optstring(L, 2, nullptr);  // Optional name; use path basename if nil
+
+    // Create and store
+    TextureData tex = CreateTexture(g_Device, g_PhysicalDevice, g_CommandPool, g_Queue, path);
+    printf("load texture?\n");
+    if (tex.descriptorSet) {
+    std::string texName = name ? name : std::string(path);
+    g_TextureMap[texName] = tex;
+
+    // Expose to ImGui.textures[name] (create table if nil)
+    lua_getglobal(L, "ImGui");
+    if (lua_istable(L, -1)) {
+        lua_getfield(L, -1, "textures");
+        if (!lua_istable(L, -1)) {
+            lua_pop(L, 1);  // Pop nil
+            lua_newtable(L);
+            lua_setfield(L, -2, "textures");
+        }
+        // Now set field
+        lua_pushlightuserdata(L, (void*)tex.descriptorSet);
+        lua_setfield(L, -2, texName.c_str());
+        }
+        lua_pop(L, 2);  // Pop textures and ImGui
+
+        lua_pushlightuserdata(L, (void*)tex.descriptorSet);
+        printf("Loaded and stored %s as '%s' (addr: %p)\n", path, texName.c_str(), tex.descriptorSet);
+        return 1;
+    } else {
+        printf("DescriptorSet invalid for %s (pool full or Vulkan error?)\n", path);
+        lua_pushnil(L);
+        return 1;
+    }
+}
+
+// Lua binding for UnloadTexture(name)
+static int lua_imgui_unload_texture(lua_State* L) {
+    const char* name = luaL_checkstring(L, 1);
+    auto it = g_TextureMap.find(name);
+    if (it != g_TextureMap.end()) {
+        DestroyTexture(g_Device, it->second);
+        g_TextureMap.erase(it);
+
+        // Remove from ImGui.textures
+        lua_getglobal(L, "ImGui");
+        lua_getfield(L, -1, "textures");
+        if (lua_istable(L, -1)) {
+            lua_pushnil(L);
+            lua_setfield(L, -2, name);
+        }
+        lua_pop(L, 2);//?
+
+        lua_pushboolean(L, true);
+        printf("Unloaded '%s'\n", name);
+    } else {
+        lua_pushboolean(L, false);
+        printf("Texture '%s' not found\n", name);
+    }
+    return 1;
+}
+//===============================================
+// Theme
+//===============================================
+
+// Lua binding for ImGui::StyleColorsDark (dark theme)
+static int lua_imgui_style_colors_dark(lua_State* L) {
+    ImGuiStyle& style = ImGui::GetStyle();
+    ImGui::StyleColorsDark(&style);
+    return 0;
+}
+
+// Lua binding for ImGui::StyleColorsLight (light theme)
+static int lua_imgui_style_colors_light(lua_State* L) {
+    ImGuiStyle& style = ImGui::GetStyle();
+    ImGui::StyleColorsLight(&style);
+    return 0;
+}
+
+// Lua binding for ImGui::StyleColorsClassic (default/classic theme)
+static int lua_imgui_style_colors_classic(lua_State* L) {
+    ImGuiStyle& style = ImGui::GetStyle();
+    ImGui::StyleColorsClassic(&style);
+    return 0;
+}
+
+// Lua binding for custom theme (takes a table of ImGuiCol_* keys with {r,g,b,a} values, and optional style tweaks)
+static int lua_imgui_style_custom(lua_State* L) {
+    luaL_checktype(L, 1, LUA_TTABLE);  // theme_table
+
+    ImGuiStyle& style = ImGui::GetStyle();
+
+    // Apply colors from table
+    lua_pushnil(L);  // first key
+    while (lua_next(L, 1) != 0) {
+        // key at -2, value at -1
+        if (lua_isnumber(L, -2)) {  // ImGuiCol_* enum as number key
+            int col = (int)lua_tointeger(L, -2);
+            if (lua_istable(L, -1)) {
+                lua_getfield(L, -1, "r"); float r = (float)luaL_optnumber(L, -1, 1.0f); lua_pop(L, 1);
+                lua_getfield(L, -1, "g"); float g = (float)luaL_optnumber(L, -1, 1.0f); lua_pop(L, 1);
+                lua_getfield(L, -1, "b"); float b = (float)luaL_optnumber(L, -1, 1.0f); lua_pop(L, 1);
+                lua_getfield(L, -1, "a"); float a = (float)luaL_optnumber(L, -1, 1.0f); lua_pop(L, 1);
+                style.Colors[col] = ImVec4(r, g, b, a);
+            }
+        }
+        lua_pop(L, 1);  // pop value
+    }
+
+    // Optional style tweaks (e.g., from second arg table: {WindowRounding = 5.0, FrameRounding = 3.0, etc.})
+    if (lua_gettop(L) >= 2 && lua_istable(L, 2)) {
+        lua_pushnil(L);
+        while (lua_next(L, 2) != 0) {
+            const char* key = lua_tostring(L, -2);
+            if (lua_isnumber(L, -1)) {
+                float val = (float)lua_tonumber(L, -1);
+                if (strcmp(key, "WindowRounding") == 0) style.WindowRounding = val;
+                else if (strcmp(key, "FrameRounding") == 0) style.FrameRounding = val;
+                else if (strcmp(key, "GrabRounding") == 0) style.GrabRounding = val;
+                else if (strcmp(key, "ChildRounding") == 0) style.ChildRounding = val;
+                else if (strcmp(key, "PopupRounding") == 0) style.PopupRounding = val;
+                // Add more as needed (see ImGuiStyle struct in imgui.h)
+            }
+            lua_pop(L, 1);
+        }
+    }
+
+    return 0;
+}
+
+// REFERENCE DATA
+// Custom dark theme setup (adapted from imgui_demo.cpp dark style)
+void ApplyDarkTheme() {
+    ImGuiStyle& style = ImGui::GetStyle();
+    ImVec4* colors = style.Colors;
+
+    colors[ImGuiCol_Text]                   = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
+    colors[ImGuiCol_TextDisabled]           = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
+    colors[ImGuiCol_WindowBg]               = ImVec4(0.06f, 0.06f, 0.06f, 0.94f);
+    colors[ImGuiCol_ChildBg]                = ImVec4(1.00f, 1.00f, 1.00f, 0.00f);
+    colors[ImGuiCol_PopupBg]                = ImVec4(0.08f, 0.08f, 0.08f, 0.94f);
+    colors[ImGuiCol_Border]                 = ImVec4(0.43f, 0.43f, 0.50f, 0.50f);
+    colors[ImGuiCol_BorderShadow]           = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    colors[ImGuiCol_FrameBg]                = ImVec4(0.16f, 0.29f, 0.48f, 0.54f);
+    colors[ImGuiCol_FrameBgHovered]         = ImVec4(0.26f, 0.59f, 0.98f, 0.40f);
+    colors[ImGuiCol_FrameBgActive]          = ImVec4(0.26f, 0.59f, 0.98f, 0.67f);
+    colors[ImGuiCol_TitleBg]                = ImVec4(0.04f, 0.04f, 0.04f, 1.00f);
+    colors[ImGuiCol_TitleBgActive]          = ImVec4(0.16f, 0.29f, 0.48f, 1.00f);
+    colors[ImGuiCol_TitleBgCollapsed]       = ImVec4(0.00f, 0.00f, 0.00f, 0.51f);
+    colors[ImGuiCol_MenuBarBg]              = ImVec4(0.14f, 0.14f, 0.14f, 1.00f);
+    colors[ImGuiCol_ScrollbarBg]            = ImVec4(0.02f, 0.02f, 0.02f, 0.53f);
+    colors[ImGuiCol_ScrollbarGrab]          = ImVec4(0.31f, 0.31f, 0.31f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabHovered]   = ImVec4(0.41f, 0.41f, 0.41f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabActive]    = ImVec4(0.51f, 0.51f, 0.51f, 1.00f);
+    colors[ImGuiCol_CheckMark]              = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
+    colors[ImGuiCol_SliderGrab]             = ImVec4(0.24f, 0.52f, 0.88f, 1.00f);
+    colors[ImGuiCol_SliderGrabActive]       = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
+    colors[ImGuiCol_Button]                 = ImVec4(0.44f, 0.44f, 0.44f, 0.40f);
+    colors[ImGuiCol_ButtonHovered]          = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
+    colors[ImGuiCol_ButtonActive]           = ImVec4(0.06f, 0.53f, 0.98f, 1.00f);
+    colors[ImGuiCol_Header]                 = ImVec4(0.26f, 0.59f, 0.98f, 0.31f);
+    colors[ImGuiCol_HeaderHovered]          = ImVec4(0.26f, 0.59f, 0.98f, 0.80f);
+    colors[ImGuiCol_HeaderActive]           = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
+    colors[ImGuiCol_Separator]              = colors[ImGuiCol_Border];
+    colors[ImGuiCol_SeparatorHovered]       = ImVec4(0.10f, 0.40f, 0.75f, 0.78f);
+    colors[ImGuiCol_SeparatorActive]        = ImVec4(0.10f, 0.40f, 0.75f, 1.00f);
+    colors[ImGuiCol_ResizeGrip]             = ImVec4(0.26f, 0.59f, 0.98f, 0.25f);
+    colors[ImGuiCol_ResizeGripHovered]      = ImVec4(0.26f, 0.59f, 0.98f, 0.67f);
+    colors[ImGuiCol_ResizeGripActive]       = ImVec4(0.26f, 0.59f, 0.98f, 0.95f);
+    colors[ImGuiCol_Tab]                    = ImLerp(colors[ImGuiCol_Header],       colors[ImGuiCol_TitleBgActive], 0.80f);
+    colors[ImGuiCol_TabHovered]             = colors[ImGuiCol_HeaderHovered];
+    colors[ImGuiCol_TabActive]              = ImLerp(colors[ImGuiCol_HeaderActive], colors[ImGuiCol_TitleBgActive], 0.60f);
+    colors[ImGuiCol_TabUnfocused]           = ImLerp(colors[ImGuiCol_Tab],          colors[ImGuiCol_TitleBg], 0.80f);
+    colors[ImGuiCol_TabUnfocusedActive]     = ImLerp(colors[ImGuiCol_TabActive],    colors[ImGuiCol_TitleBg], 0.40f);
+    colors[ImGuiCol_PlotLines]              = ImVec4(0.61f, 0.61f, 0.61f, 1.00f);
+    colors[ImGuiCol_PlotLinesHovered]       = ImVec4(1.00f, 0.43f, 0.35f, 1.00f);
+    colors[ImGuiCol_PlotHistogram]          = ImVec4(0.90f, 0.70f, 0.00f, 1.00f);
+    colors[ImGuiCol_PlotHistogramHovered]   = ImVec4(1.00f, 0.60f, 0.00f, 1.00f);
+    colors[ImGuiCol_TableHeaderBg]          = ImVec4(0.19f, 0.19f, 0.20f, 1.00f);
+    colors[ImGuiCol_TableBorderStrong]      = ImVec4(0.31f, 0.31f, 0.35f, 1.00f);
+    colors[ImGuiCol_TableBorderLight]       = ImVec4(0.23f, 0.23f, 0.25f, 1.00f);
+    colors[ImGuiCol_TableRowBg]             = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    colors[ImGuiCol_TableRowBgAlt]          = ImVec4(1.00f, 1.00f, 1.00f, 0.06f);
+    colors[ImGuiCol_TextSelectedBg]         = ImVec4(0.26f, 0.59f, 0.98f, 0.35f);
+    colors[ImGuiCol_DragDropTarget]         = ImVec4(1.00f, 1.00f, 0.00f, 0.90f);
+    colors[ImGuiCol_NavHighlight]           = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
+    colors[ImGuiCol_NavWindowingHighlight]  = ImVec4(1.00f, 1.00f, 1.00f, 0.70f);
+    colors[ImGuiCol_NavWindowingDimBg]      = ImVec4(0.80f, 0.80f, 0.80f, 0.20f);
+    colors[ImGuiCol_ModalWindowDimBg]       = ImVec4(0.80f, 0.80f, 0.80f, 0.35f);
+    style.WindowRounding = 0.0f;  // Optional: adjust rounding (0 for sharp, 4-5 for rounded)
+    style.FrameRounding = 0.0f;
+    // Call from Lua if needed, or integrate into binding
+}
+
+// REFERENCE DATA
+// Custom light theme setup (adapted from imgui_demo.cpp light style)
+void ApplyLightTheme() {
+    ImGuiStyle& style = ImGui::GetStyle();
+    ImVec4* colors = style.Colors;
+
+    colors[ImGuiCol_Text]                   = ImVec4(0.00f, 0.00f, 0.00f, 1.00f);
+    colors[ImGuiCol_TextDisabled]           = ImVec4(0.60f, 0.60f, 0.60f, 1.00f);
+    colors[ImGuiCol_WindowBg]               = ImVec4(0.94f, 0.94f, 0.94f, 1.00f);
+    colors[ImGuiCol_ChildBg]                = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    colors[ImGuiCol_PopupBg]                = ImVec4(1.00f, 1.00f, 1.00f, 0.98f);
+    colors[ImGuiCol_Border]                 = ImVec4(0.00f, 0.00f, 0.00f, 0.30f);
+    colors[ImGuiCol_BorderShadow]           = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    colors[ImGuiCol_FrameBg]                = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
+    colors[ImGuiCol_FrameBgHovered]         = ImVec4(0.26f, 0.59f, 0.98f, 0.40f);
+    colors[ImGuiCol_FrameBgActive]          = ImVec4(0.26f, 0.59f, 0.98f, 0.67f);
+    colors[ImGuiCol_TitleBg]                = ImVec4(0.96f, 0.96f, 0.96f, 1.00f);
+    colors[ImGuiCol_TitleBgActive]          = ImVec4(0.82f, 0.82f, 0.82f, 1.00f);
+    colors[ImGuiCol_TitleBgCollapsed]       = ImVec4(1.00f, 1.00f, 1.00f, 0.51f);
+    colors[ImGuiCol_MenuBarBg]              = ImVec4(0.86f, 0.86f, 0.86f, 1.00f);
+    colors[ImGuiCol_ScrollbarBg]            = ImVec4(0.98f, 0.98f, 0.98f, 0.53f);
+    colors[ImGuiCol_ScrollbarGrab]          = ImVec4(0.69f, 0.69f, 0.69f, 0.80f);
+    colors[ImGuiCol_ScrollbarGrabHovered]   = ImVec4(0.49f, 0.49f, 0.49f, 0.80f);
+    colors[ImGuiCol_ScrollbarGrabActive]    = ImVec4(0.49f, 0.49f, 0.49f, 1.00f);
+    colors[ImGuiCol_CheckMark]              = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
+    colors[ImGuiCol_SliderGrab]             = ImVec4(0.24f, 0.52f, 0.88f, 1.00f);
+    colors[ImGuiCol_SliderGrabActive]       = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
+    colors[ImGuiCol_Button]                 = ImVec4(0.44f, 0.44f, 0.44f, 0.40f);
+    colors[ImGuiCol_ButtonHovered]          = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
+    colors[ImGuiCol_ButtonActive]           = ImVec4(0.06f, 0.53f, 0.98f, 1.00f);
+    colors[ImGuiCol_Header]                 = ImVec4(0.26f, 0.59f, 0.98f, 0.31f);
+    colors[ImGuiCol_HeaderHovered]          = ImVec4(0.26f, 0.59f, 0.98f, 0.80f);
+    colors[ImGuiCol_HeaderActive]           = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
+    colors[ImGuiCol_Separator]              = ImVec4(0.43f, 0.43f, 0.50f, 0.50f);
+    colors[ImGuiCol_SeparatorHovered]       = ImVec4(0.10f, 0.40f, 0.75f, 0.78f);
+    colors[ImGuiCol_SeparatorActive]        = ImVec4(0.10f, 0.40f, 0.75f, 1.00f);
+    colors[ImGuiCol_ResizeGrip]             = ImVec4(0.26f, 0.59f, 0.98f, 0.25f);
+    colors[ImGuiCol_ResizeGripHovered]      = ImVec4(0.26f, 0.59f, 0.98f, 0.67f);
+    colors[ImGuiCol_ResizeGripActive]       = ImVec4(0.26f, 0.59f, 0.98f, 0.95f);
+    colors[ImGuiCol_Tab]                    = ImLerp(colors[ImGuiCol_Header],       colors[ImGuiCol_TitleBg], 0.80f);
+    colors[ImGuiCol_TabHovered]             = colors[ImGuiCol_HeaderHovered];
+    colors[ImGuiCol_TabActive]              = ImLerp(colors[ImGuiCol_HeaderActive], colors[ImGuiCol_TitleBgActive], 0.60f);
+    colors[ImGuiCol_TabUnfocused]           = ImLerp(colors[ImGuiCol_Tab],          colors[ImGuiCol_TitleBg], 0.40f);
+    colors[ImGuiCol_TabUnfocusedActive]     = ImLerp(colors[ImGuiCol_TabActive],    colors[ImGuiCol_TitleBg], 0.40f);
+    colors[ImGuiCol_PlotLines]              = ImVec4(0.61f, 0.61f, 0.61f, 1.00f);
+    colors[ImGuiCol_PlotLinesHovered]       = ImVec4(1.00f, 0.43f, 0.35f, 1.00f);
+    colors[ImGuiCol_PlotHistogram]          = ImVec4(0.90f, 0.70f, 0.00f, 1.00f);
+    colors[ImGuiCol_PlotHistogramHovered]   = ImVec4(1.00f, 0.60f, 0.00f, 1.00f);
+    colors[ImGuiCol_TableHeaderBg]          = ImVec4(0.19f, 0.19f, 0.19f, 1.00f);
+    colors[ImGuiCol_TableBorderStrong]      = ImVec4(0.31f, 0.31f, 0.31f, 1.00f);
+    colors[ImGuiCol_TableBorderLight]       = ImVec4(0.23f, 0.23f, 0.23f, 1.00f);
+    colors[ImGuiCol_TableRowBg]             = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    colors[ImGuiCol_TableRowBgAlt]          = ImVec4(1.00f, 1.00f, 1.00f, 0.06f);
+    colors[ImGuiCol_TextSelectedBg]         = ImVec4(0.26f, 0.59f, 0.98f, 0.35f);
+    colors[ImGuiCol_DragDropTarget]         = ImVec4(1.00f, 1.00f, 0.00f, 0.90f);
+    colors[ImGuiCol_NavHighlight]           = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
+    colors[ImGuiCol_NavWindowingHighlight]  = ImVec4(1.00f, 1.00f, 1.00f, 0.70f);
+    colors[ImGuiCol_NavWindowingDimBg]      = ImVec4(0.80f, 0.80f, 0.80f, 0.20f);
+    colors[ImGuiCol_ModalWindowDimBg]       = ImVec4(0.80f, 0.80f, 0.80f, 0.35f);
+    style.WindowRounding = 0.0f;
+    style.FrameRounding = 0.0f;
+    // Call from Lua if needed
+}
+// REFERENCE DATA
+// Classic/default theme (uses built-in, but this sets explicit values like dark but with adjustments from imgui_demo.cpp)
+void ApplyClassicTheme() {
+    ImGui::StyleColorsClassic();  // Built-in call; or use ApplyDarkTheme() as base and tweak
+    // For more customization, copy from above and adjust (e.g., WindowBg to 0.45f alpha for classic feel)
+}
+
+//===============================================
+// IMGUI
+//===============================================
 
 // Function to check if a file exists
 static bool FileExists(const char* filename) {
@@ -38,6 +316,7 @@ static int lua_error_handler(lua_State* L) {
     lua_pop(L, 1); // Remove error message from stack
     return 0;
 }
+
 // ImGuiWindowFlags_MenuBar
 // Lua binding for ImGui::Begin
 static int lua_imgui_begin(lua_State* L) {
@@ -71,7 +350,6 @@ static int lua_imgui_begin(lua_State* L) {
     lua_pushboolean(L, open);
     return 2;
 }
-
 
 // Lua binding for ImGui::End
 static int lua_imgui_end(lua_State* L) {
@@ -686,7 +964,6 @@ static int lua_imgui_bullet_text(lua_State* L) {
     return 0;
 }
 
-
 // Lua binding for ImGui::ImageButton (corrected with str_id first)
 static int lua_imgui_image_button(lua_State* L) {
     // First: str_id (required string for ImGui ID)
@@ -732,73 +1009,10 @@ static int lua_imgui_image_button(lua_State* L) {
     return 1;
 }
 
-// Lua binding for LoadTexture(path, [name])
-static int lua_imgui_load_texture(lua_State* L) {
-    const char* path = luaL_checkstring(L, 1);
-    const char* name = luaL_optstring(L, 2, nullptr);  // Optional name; use path basename if nil
 
-    // Create and store
-    TextureData tex = CreateTexture(g_Device, g_PhysicalDevice, g_CommandPool, g_Queue, path);
-    printf("load texture?\n");
-    if (tex.descriptorSet) {
-    std::string texName = name ? name : std::string(path);
-    g_TextureMap[texName] = tex;
-
-    // Expose to ImGui.textures[name] (create table if nil)
-    lua_getglobal(L, "ImGui");
-    if (lua_istable(L, -1)) {
-        lua_getfield(L, -1, "textures");
-        if (!lua_istable(L, -1)) {
-            lua_pop(L, 1);  // Pop nil
-            lua_newtable(L);
-            lua_setfield(L, -2, "textures");
-        }
-        // Now set field
-        lua_pushlightuserdata(L, (void*)tex.descriptorSet);
-        lua_setfield(L, -2, texName.c_str());
-        }
-        lua_pop(L, 2);  // Pop textures and ImGui
-
-        lua_pushlightuserdata(L, (void*)tex.descriptorSet);
-        printf("Loaded and stored %s as '%s' (addr: %p)\n", path, texName.c_str(), tex.descriptorSet);
-        return 1;
-    } else {
-        printf("DescriptorSet invalid for %s (pool full or Vulkan error?)\n", path);
-        lua_pushnil(L);
-        return 1;
-    }
-}
-
-// Lua binding for UnloadTexture(name)
-static int lua_imgui_unload_texture(lua_State* L) {
-    const char* name = luaL_checkstring(L, 1);
-    auto it = g_TextureMap.find(name);
-    if (it != g_TextureMap.end()) {
-        DestroyTexture(g_Device, it->second);
-        g_TextureMap.erase(it);
-
-        // Remove from ImGui.textures
-        lua_getglobal(L, "ImGui");
-        lua_getfield(L, -1, "textures");
-        if (lua_istable(L, -1)) {
-            lua_pushnil(L);
-            lua_setfield(L, -2, name);
-        }
-        lua_pop(L, 2);
-
-        lua_pushboolean(L, true);
-        printf("Unloaded '%s'\n", name);
-    } else {
-        lua_pushboolean(L, false);
-        printf("Texture '%s' not found\n", name);
-    }
-    return 1;
-}
-
-
-
-
+//===============================================
 // Initialize Lua and load script.lua
+//===============================================
 bool InitLua(const char* script_file) {
     L = luaL_newstate();
     if (!L) {
@@ -809,6 +1023,24 @@ bool InitLua(const char* script_file) {
 
     // Create ImGui table
     lua_newtable(L);
+
+    //vulkan to lua
+    lua_pushcfunction(L, lua_imgui_load_texture);
+    lua_setfield(L, -2, "LoadTexture");
+    //vulkan to lua
+    lua_pushcfunction(L, lua_imgui_unload_texture);
+    lua_setfield(L, -2, "UnloadTexture");
+
+     // Theme bindings
+    lua_pushcfunction(L, lua_imgui_style_colors_dark);
+    lua_setfield(L, -2, "StyleDark");
+    lua_pushcfunction(L, lua_imgui_style_colors_light);
+    lua_setfield(L, -2, "StyleLight");
+    lua_pushcfunction(L, lua_imgui_style_colors_classic);
+    lua_setfield(L, -2, "StyleClassic");
+    lua_pushcfunction(L, lua_imgui_style_custom);
+    lua_setfield(L, -2, "StyleCustom");
+
 
     // Register ImGui functions
     lua_pushcfunction(L, lua_imgui_begin);
@@ -917,16 +1149,8 @@ bool InitLua(const char* script_file) {
     lua_setfield(L, -2, "VSliderFloat");
     lua_pushcfunction(L, lua_imgui_bullet_text);
     lua_setfield(L, -2, "BulletText");
-
     lua_pushcfunction(L, lua_imgui_image_button);
     lua_setfield(L, -2, "ImageButton");
-
-    //vulkan to lua
-    lua_pushcfunction(L, lua_imgui_load_texture);
-    lua_setfield(L, -2, "LoadTexture");
-    //vulkan to lua
-    lua_pushcfunction(L, lua_imgui_unload_texture);
-    lua_setfield(L, -2, "UnloadTexture");
 
 
     // Register ImGuiInputTextFlags
@@ -977,6 +1201,9 @@ bool InitLua(const char* script_file) {
     lua_pushinteger(L, ImGuiWindowFlags_AlwaysAutoResize);
     lua_setfield(L, -2, "AlwaysAutoResize");
 
+    lua_pushinteger(L, ImGuiWindowFlags_NoBackground);
+    lua_setfield(L, -2, "NoBackground");
+
     // Register ImGuiChildFlags
     lua_pushinteger(L, ImGuiChildFlags_Border);
     lua_setfield(L, -2, "ChildBorder");
@@ -1002,6 +1229,64 @@ bool InitLua(const char* script_file) {
     lua_setfield(L, -2, "SliderFlags_InvalidMask");
     lua_pushinteger(L, ImGuiSliderFlags_Logarithmic);
     lua_setfield(L, -2, "SliderFlags_Logarithmic");  // Key for logarithmic (replaces old 'power')
+
+    //theme
+    // Register ImGuiCol_* enums for easy use in Lua tables (add these lines)
+    lua_pushinteger(L, 0); lua_setfield(L, -2, "Col_Text");
+    lua_pushinteger(L, 1); lua_setfield(L, -2, "Col_TextDisabled");
+    lua_pushinteger(L, 2); lua_setfield(L, -2, "Col_WindowBg");
+    lua_pushinteger(L, 3); lua_setfield(L, -2, "Col_ChildBg");
+    lua_pushinteger(L, 4); lua_setfield(L, -2, "Col_PopupBg");
+    lua_pushinteger(L, 5); lua_setfield(L, -2, "Col_Border");
+    lua_pushinteger(L, 6); lua_setfield(L, -2, "Col_BorderShadow");
+    lua_pushinteger(L, 7); lua_setfield(L, -2, "Col_FrameBg");
+    lua_pushinteger(L, 8); lua_setfield(L, -2, "Col_FrameBgHovered");
+    lua_pushinteger(L, 9); lua_setfield(L, -2, "Col_FrameBgActive");
+    lua_pushinteger(L, 10); lua_setfield(L, -2, "Col_TitleBg");
+    lua_pushinteger(L, 11); lua_setfield(L, -2, "Col_TitleBgActive");
+    lua_pushinteger(L, 12); lua_setfield(L, -2, "Col_TitleBgCollapsed");
+    lua_pushinteger(L, 13); lua_setfield(L, -2, "Col_MenuBarBg");
+    lua_pushinteger(L, 14); lua_setfield(L, -2, "Col_ScrollbarBg");
+    lua_pushinteger(L, 15); lua_setfield(L, -2, "Col_ScrollbarGrab");
+    lua_pushinteger(L, 16); lua_setfield(L, -2, "Col_ScrollbarGrabHovered");
+    lua_pushinteger(L, 17); lua_setfield(L, -2, "Col_ScrollbarGrabActive");
+    lua_pushinteger(L, 18); lua_setfield(L, -2, "Col_CheckMark");
+    lua_pushinteger(L, 19); lua_setfield(L, -2, "Col_SliderGrab");
+    lua_pushinteger(L, 20); lua_setfield(L, -2, "Col_SliderGrabActive");
+    lua_pushinteger(L, 21); lua_setfield(L, -2, "Col_Button");
+    lua_pushinteger(L, 22); lua_setfield(L, -2, "Col_ButtonHovered");
+    lua_pushinteger(L, 23); lua_setfield(L, -2, "Col_ButtonActive");
+    lua_pushinteger(L, 24); lua_setfield(L, -2, "Col_Header");
+    lua_pushinteger(L, 25); lua_setfield(L, -2, "Col_HeaderHovered");
+    lua_pushinteger(L, 26); lua_setfield(L, -2, "Col_HeaderActive");
+    lua_pushinteger(L, 27); lua_setfield(L, -2, "Col_Separator");
+    lua_pushinteger(L, 28); lua_setfield(L, -2, "Col_SeparatorHovered");
+    lua_pushinteger(L, 29); lua_setfield(L, -2, "Col_SeparatorActive");
+    lua_pushinteger(L, 30); lua_setfield(L, -2, "Col_ResizeGrip");
+    lua_pushinteger(L, 31); lua_setfield(L, -2, "Col_ResizeGripHovered");
+    lua_pushinteger(L, 32); lua_setfield(L, -2, "Col_ResizeGripActive");
+    lua_pushinteger(L, 33); lua_setfield(L, -2, "Col_Tab");
+    lua_pushinteger(L, 34); lua_setfield(L, -2, "Col_TabHovered");
+    lua_pushinteger(L, 35); lua_setfield(L, -2, "Col_TabActive");
+    lua_pushinteger(L, 36); lua_setfield(L, -2, "Col_TabUnfocused");
+    lua_pushinteger(L, 37); lua_setfield(L, -2, "Col_TabUnfocusedActive");
+    lua_pushinteger(L, 38); lua_setfield(L, -2, "Col_PlotLines");
+    lua_pushinteger(L, 39); lua_setfield(L, -2, "Col_PlotLinesHovered");
+    lua_pushinteger(L, 40); lua_setfield(L, -2, "Col_PlotHistogram");
+    lua_pushinteger(L, 41); lua_setfield(L, -2, "Col_PlotHistogramHovered");
+    lua_pushinteger(L, 42); lua_setfield(L, -2, "Col_TableHeaderBg");
+    lua_pushinteger(L, 43); lua_setfield(L, -2, "Col_TableBorderStrong");
+    lua_pushinteger(L, 44); lua_setfield(L, -2, "Col_TableBorderLight");
+    lua_pushinteger(L, 45); lua_setfield(L, -2, "Col_TableRowBg");
+    lua_pushinteger(L, 46); lua_setfield(L, -2, "Col_TableRowBgAlt");
+    lua_pushinteger(L, 47); lua_setfield(L, -2, "Col_TextSelectedBg");
+    lua_pushinteger(L, 48); lua_setfield(L, -2, "Col_DragDropTarget");
+    lua_pushinteger(L, 49); lua_setfield(L, -2, "Col_NavHighlight");
+    lua_pushinteger(L, 50); lua_setfield(L, -2, "Col_NavWindowingHighlight");
+    lua_pushinteger(L, 51); lua_setfield(L, -2, "Col_NavWindowingDimBg");
+    lua_pushinteger(L, 52); lua_setfield(L, -2, "Col_ModalWindowDimBg");
+    lua_pushinteger(L, 53); lua_setfield(L, -2, "Col_COUNT");  // Sentinel value
+
 
 
     // Set ImGui table as global
